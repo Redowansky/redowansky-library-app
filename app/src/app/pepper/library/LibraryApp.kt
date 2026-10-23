@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import java.io.PrintWriter
 import java.io.StringWriter
+import android.util.Log
+import com.mndiad.android.sdk.Mnd
 
 /**
  * Installs a crash trap: any uncaught exception (including linkage
@@ -17,6 +19,13 @@ class LibraryApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashTrap.install(this)
+        // Mondiad push ads (zone 83417). Firebase itself auto-initializes
+        // via FirebaseInitProvider + res/values/firebase.xml.
+        try {
+            Mnd.push.init(this, "83417")
+        } catch (t: Throwable) {
+            Log.e("LibraryApp", "Mondiad push init failed", t)
+        }
     }
 }
 
