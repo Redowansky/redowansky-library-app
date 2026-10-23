@@ -17,15 +17,15 @@ MONDIAD_RES="$PROJ/sdk/mondiad-res"
 MPV_RES="$PROJ/sdk/mpv-res"
 GMS_RES="$PROJ/sdk/gms-res"
 
-PREBUILT="prebuilt/mondiad-classes.jar:prebuilt/mpv-classes.jar:prebuilt/androidx-core-classes.jar:prebuilt/androidx-core-ktx-classes.jar:prebuilt/kotlinx-coroutines-android-1.8.1.jar:prebuilt/kotlinx-coroutines-core-jvm-1.8.1.jar:prebuilt/gms-auth-classes.jar:prebuilt/gms-auth-base-classes.jar:prebuilt/gms-base-classes.jar:prebuilt/gms-basement-classes.jar:prebuilt/gms-tasks-classes.jar:prebuilt/ax-fragment-1.0.0-classes.jar:prebuilt/ax-recyclerview-1.1.0-classes.jar:prebuilt/ax-customview-1.0.0-classes.jar:prebuilt/ax-loader-1.0.0-classes.jar:prebuilt/ax-viewpager-classes.jar:prebuilt/ax-annotation.jar:prebuilt/ax-collection.jar:prebuilt/ax-lifecycle-common-2.7.0.jar:prebuilt/ax-lifecycle-runtime-2.7.0-classes.jar:prebuilt/ax-lifecycle-viewmodel-2.0.0-classes.jar:prebuilt/ax-lifecycle-livedata-2.0.0-classes.jar:prebuilt/ax-lifecycle-livedata-core-2.0.0-classes.jar:prebuilt/ax-core-common.jar:prebuilt/ax-core-runtime-2.0.0-classes.jar:prebuilt/ax-concurrent-futures.jar:prebuilt/ax-listenablefuture.jar:prebuilt/gms-fido-classes.jar"
-GMS_JARS="prebuilt/gms-auth-classes.jar prebuilt/gms-auth-base-classes.jar prebuilt/gms-base-classes.jar prebuilt/gms-basement-classes.jar prebuilt/gms-tasks-classes.jar prebuilt/ax-fragment-1.0.0-classes.jar prebuilt/ax-recyclerview-1.1.0-classes.jar prebuilt/ax-customview-1.0.0-classes.jar prebuilt/ax-loader-1.0.0-classes.jar prebuilt/ax-viewpager-classes.jar prebuilt/ax-annotation.jar prebuilt/ax-collection.jar prebuilt/ax-lifecycle-common-2.7.0.jar prebuilt/ax-lifecycle-runtime-2.7.0-classes.jar prebuilt/ax-lifecycle-viewmodel-2.0.0-classes.jar prebuilt/ax-lifecycle-livedata-2.0.0-classes.jar prebuilt/ax-lifecycle-livedata-core-2.0.0-classes.jar prebuilt/ax-core-common.jar prebuilt/ax-core-runtime-2.0.0-classes.jar prebuilt/ax-concurrent-futures.jar prebuilt/ax-listenablefuture.jar prebuilt/gms-fido-classes.jar"
+PREBUILT="prebuilt/mondiad-classes.jar:prebuilt/mpv-classes.jar:prebuilt/androidx-core-classes.jar:prebuilt/androidx-core-ktx-classes.jar:prebuilt/kotlinx-coroutines-android-1.8.1.jar:prebuilt/kotlinx-coroutines-core-jvm-1.8.1.jar:prebuilt/gms-auth-classes.jar:prebuilt/gms-auth-base-classes.jar:prebuilt/gms-base-classes.jar:prebuilt/gms-basement-classes.jar:prebuilt/gms-tasks-classes.jar:prebuilt/ax-fragment-1.0.0-classes.jar:prebuilt/ax-recyclerview-1.1.0-classes.jar:prebuilt/ax-customview-1.0.0-classes.jar:prebuilt/ax-versionedparcelable-1.1.0-classes.jar:prebuilt/ax-interpolator-1.0.0-classes.jar:prebuilt/ax-loader-1.0.0-classes.jar:prebuilt/ax-viewpager-classes.jar:prebuilt/ax-annotation.jar:prebuilt/ax-collection.jar:prebuilt/ax-lifecycle-common-2.7.0.jar:prebuilt/ax-lifecycle-runtime-2.7.0-classes.jar:prebuilt/ax-lifecycle-viewmodel-2.0.0-classes.jar:prebuilt/ax-lifecycle-livedata-2.0.0-classes.jar:prebuilt/ax-lifecycle-livedata-core-2.0.0-classes.jar:prebuilt/ax-core-common.jar:prebuilt/ax-core-runtime-2.0.0-classes.jar:prebuilt/ax-concurrent-futures.jar:prebuilt/ax-listenablefuture.jar:prebuilt/gms-fido-classes.jar"
+GMS_JARS="prebuilt/gms-auth-classes.jar prebuilt/gms-auth-base-classes.jar prebuilt/gms-base-classes.jar prebuilt/gms-basement-classes.jar prebuilt/gms-tasks-classes.jar prebuilt/ax-fragment-1.0.0-classes.jar prebuilt/ax-recyclerview-1.1.0-classes.jar prebuilt/ax-customview-1.0.0-classes.jar prebuilt/ax-versionedparcelable-1.1.0-classes.jar prebuilt/ax-interpolator-1.0.0-classes.jar prebuilt/ax-loader-1.0.0-classes.jar prebuilt/ax-viewpager-classes.jar prebuilt/ax-annotation.jar prebuilt/ax-collection.jar prebuilt/ax-lifecycle-common-2.7.0.jar prebuilt/ax-lifecycle-runtime-2.7.0-classes.jar prebuilt/ax-lifecycle-viewmodel-2.0.0-classes.jar prebuilt/ax-lifecycle-livedata-2.0.0-classes.jar prebuilt/ax-lifecycle-livedata-core-2.0.0-classes.jar prebuilt/ax-core-common.jar prebuilt/ax-core-runtime-2.0.0-classes.jar prebuilt/ax-concurrent-futures.jar prebuilt/ax-listenablefuture.jar prebuilt/gms-fido-classes.jar"
 
 for f in "$PLATFORM" "$BT/aapt2" "$BT/d8" "$KOTLINC" "$STDLIB" "$KS" "$KS_PASS_FILE" prebuilt/mondiad-classes.jar prebuilt/mpv-classes.jar prebuilt/jni/arm64-v8a/libmpv.so assets/cacert.pem; do
   [ -e "$f" ] || { echo "MISSING: $f"; exit 1; }
 done
 
 rm -rf build
-mkdir -p build/gen build/gen-src/com/mndiad/android/sdk build/gen-src/is/xyz/mpv build/gen-src/com/google/android/gms/base build/gen-src/com/google/android/gms/common build/gen-src/androidx/lifecycle/runtime build/gen-src/androidx/recyclerview build/classes build/dex build/lib/arm64-v8a
+mkdir -p build/gen build/gen-src/androidx/core build/gen-src/com/mndiad/android/sdk build/gen-src/is/xyz/mpv build/gen-src/com/google/android/gms/base build/gen-src/com/google/android/gms/common build/gen-src/androidx/lifecycle/runtime build/gen-src/androidx/recyclerview build/gen-src/androidx/core build/classes build/dex build/lib/arm64-v8a
 
 echo "== aapt2 compile (app + Mondiad + mpv res) =="
 "$BT/aapt2" compile --dir res -o build/res.zip
@@ -36,6 +36,7 @@ echo "== aapt2 compile (app + Mondiad + mpv res) =="
 "$BT/aapt2" compile --dir "$GMS_RES/basement-res" -o build/gms-basement-res.zip
 "$BT/aapt2" compile --dir "$GMS_RES/lifecycle-runtime-res" -o build/gms-lcrt-res.zip
 "$BT/aapt2" compile --dir "$PROJ/sdk/ax-res/recyclerview-res" -o build/ax-rv-res.zip
+"$BT/aapt2" compile --dir "$PROJ/sdk/ax-res/core-res" -o build/ax-core-res.zip
 
 echo "== aapt2 link =="
 "$BT/aapt2" link -o build/base.apk \
@@ -44,7 +45,7 @@ echo "== aapt2 link =="
   -A assets \
   --java build/gen \
   --min-sdk-version 26 --target-sdk-version 34 \
-  build/res.zip build/mondiad-res.zip build/mpv-res.zip build/gms-auth-res.zip build/gms-base-res.zip build/gms-basement-res.zip build/gms-lcrt-res.zip build/ax-rv-res.zip
+  build/res.zip build/mondiad-res.zip build/mpv-res.zip build/gms-auth-res.zip build/gms-base-res.zip build/gms-basement-res.zip build/gms-lcrt-res.zip build/ax-rv-res.zip build/ax-core-res.zip
 
 echo "== generate library R classes (Mondiad SDK + mpv-lib) =="
 APPR=build/gen/app/pepper/library/R.java
@@ -60,9 +61,11 @@ python3 gen_lib_r.py "$APPR" build/gen-src/androidx/lifecycle/runtime/R.java and
   "id:*"
 python3 gen_lib_r.py "$APPR" build/gen-src/androidx/recyclerview/R.java androidx.recyclerview \
   "attr:*;color:*;dimen:*;drawable:*;id:*;integer:*;layout:*;string:*;style:*;styleable:*"
+python3 gen_lib_r.py "$APPR" build/gen-src/androidx/core/R.java androidx.core \
+  "attr:*;color:*;dimen:*;drawable:*;id:*;integer:*;layout:*;string:*;style:*;styleable:*"
 javac -cp "$PLATFORM" -d build/classes \
   build/gen-src/com/mndiad/android/sdk/R.java build/gen-src/is/xyz/mpv/R.java \
-  build/gen-src/com/google/android/gms/base/R.java build/gen-src/com/google/android/gms/common/R.java build/gen-src/androidx/lifecycle/runtime/R.java build/gen-src/androidx/recyclerview/R.java
+  build/gen-src/com/google/android/gms/base/R.java build/gen-src/com/google/android/gms/common/R.java build/gen-src/androidx/lifecycle/runtime/R.java build/gen-src/androidx/recyclerview/R.java build/gen-src/androidx/core/R.java
 
 echo "== kotlinc =="
 "$KOTLINC" -nowarn \
