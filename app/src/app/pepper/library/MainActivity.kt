@@ -2,6 +2,8 @@ package app.pepper.library
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,24 +12,25 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AbsListView
-import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
-import android.widget.GridView
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import app.pepper.library.Ui.dp
 import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * Redowansky Library — native home screen.
- * Catalog comes from the site's own JSON API (GET /api/movies, the same
- * feed the Aniyomi extension uses); posters, search and filtering are
- * all local/native. Not a WebView.
+ * Redowansky Library — native home screen (modern UI, v0.6).
+ * Catalog from the site's own JSON API (GET /api/movies — same feed
+ * the Aniyomi extension uses). Header with Google avatar, a hero
+ * Continue Watching banner, badge poster cards on a RecyclerView
+ * grid, and a bottom nav: Home / Recent / Profile. Not a WebView.
  */
 class MainActivity : Activity() {
 
@@ -35,30 +38,40 @@ class MainActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
 
     private var all: List<Movie> = emptyList()
-    private var filterType: String = "all"
+    private var section: String = "home" // home | recent
+    private var filterType: String = "all" // within home: all | movie | song
     private var query: String = ""
+    private var progressById: Map<String, ProgressStore.Entry> = emptyMap()
 
-    private lateinit var grid: GridView
+    private lateinit var recycler: RecyclerView
+    private lateinit var adapter: PosterRvAdapter
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
-    private lateinit var adapter: PosterAdapter
-    private val filterButtons = mutableMapOf<String, Button>()
+    private lateinit var chipsRow: LinearLayout
+    private lateinit var sectionTitle: TextView
+    private val chipViews = mutableMapOf<String, TextView>()
 
-    // Continue Watching card
-    private lateinit var continueCard: LinearLayout
-    private lateinit var continuePoster: ImageView
-    private lateinit var continueTitle: TextView
-    private lateinit var continueMeta: TextView
-    private lateinit var continueFill: View
-    private lateinit var continueRest: View
-    private var continueEntry: ProgressStore.Entry? = null
+    // Hero Continue Watching
+    private lateinit var hero: FrameLayout
+    private lateinit var heroImg: ImageView
+    private lateinit var heroTitle: TextView
+    private lateinit var heroMeta: TextView
+    private lateinit var heroFill: View
+    private lateinit var heroRest: View
+    private var heroEntry: ProgressStore.Entry? = null
 
-    // In-app update banner
+    // Update banner
     private lateinit var updateBanner: TextView
     private var pendingUpdate: Updater.Info? = null
 
-    // Google account chip (header, top-right)
-    private lateinit var accountBtn: Button
+    // Header account
+    private lateinit var signInBtn: Button
+    private lateinit var avatarBox: FrameLayout
+    private lateinit var avatarImg: ImageView
+    private lateinit var avatarInitial: TextView
+
+    // Bottom nav
+    private val navCols = mutableMapOf<String, Pair<TextView, TextView>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,35 +81,37 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Ui.BG)
-            setPadding(dp(12), dp(12), dp(12), 0)
         }
 
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        header.addView(
-            Ui.text(this, "🎬 Redowansky's Library", 20f, Ui.TEXT, bold = true).apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        // ---------- Header: logo · search pill · account ----------
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(4))
+        }
+        val logo = FrameLayout(this).apply {
+            background = Ui.rounded(this@MainActivity, Ui.GREEN, 10)
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+        }
+        logo.addView(
+            Ui.text(this, "🎬", 17f, Color.BLACK, gravity = Gravity.CENTER).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
             }
         )
-        accountBtn = Ui.ghostButton(this, "Sign in") { onAccountTap() }
-        header.addView(accountBtn)
-        root.addView(header)
-        root.addView(Ui.vspace(this, 8))
-
-        updateBanner = Ui.text(this, "", 14f, android.graphics.Color.BLACK, bold = true).apply {
-            visibility = View.GONE
-            setBackgroundColor(Ui.GREEN)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            setOnClickListener { pendingUpdate?.let { startUpdateDownload(it) } }
-        }
-        root.addView(updateBanner)
-        root.addView(Ui.vspace(this, 10))
+        header.addView(logo)
 
         val search = EditText(this).apply {
-            hint = "Search titles…"
+            hint = "🔍  Search titles…"
             setHintTextColor(Ui.DIM)
             setTextColor(Ui.TEXT)
-            setBackgroundColor(Ui.PANEL)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            textSize = 14f
+            isSingleLine = true
+            background = Ui.rounded(this@MainActivity, Ui.PANEL, 20)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { marginStart = dp(10); marginEnd = dp(10) }
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
                     query = s?.toString()?.trim()?.lowercase() ?: ""
@@ -107,30 +122,83 @@ class MainActivity : Activity() {
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
         }
-        root.addView(search)
-        root.addView(Ui.vspace(this, 10))
+        header.addView(search)
 
-        continueCard = buildContinueCard()
-        continueCard.visibility = View.GONE
-        root.addView(continueCard)
+        signInBtn = Ui.ghostButton(this, "Sign in") { onSignInTap() }
+        header.addView(signInBtn)
 
-        val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for ((key, label) in listOf(
-            "all" to "All", "movie" to "🎬 Movies", "song" to "🎵 Songs", "recent" to "⏱ Recent"
-        )) {
-            val b = Ui.ghostButton(this, label) {
-                filterType = key
-                styleFilters()
-                refresh()
+        avatarBox = FrameLayout(this).apply {
+            background = Ui.rounded(this@MainActivity, Ui.CARD, 19)
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
             }
-            b.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { marginEnd = dp(6) }
-            filterButtons[key] = b
-            filters.addView(b)
         }
-        root.addView(filters)
-        styleFilters()
-        root.addView(Ui.vspace(this, 10))
+        avatarInitial = Ui.text(this, "", 15f, Ui.TEXT, bold = true, gravity = Gravity.CENTER)
+            .apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        avatarBox.addView(avatarInitial)
+        avatarImg = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        avatarBox.addView(avatarImg)
+        header.addView(avatarBox)
+        root.addView(header)
+
+        // ---------- Update banner ----------
+        updateBanner = Ui.text(this, "", 13.5f, Color.BLACK, bold = true).apply {
+            visibility = View.GONE
+            background = Ui.rounded(this@MainActivity, Ui.GREEN, 10)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(14), dp(8), dp(14), 0) }
+            setOnClickListener {
+                pendingUpdate?.let { UpdateInstaller.start(this@MainActivity, it) }
+            }
+        }
+        root.addView(updateBanner)
+
+        // ---------- Hero: Continue Watching ----------
+        hero = buildHero()
+        root.addView(hero)
+
+        // ---------- Filter chips (home section) ----------
+        chipsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(14), dp(12), dp(14), 0)
+        }
+        for ((key, label) in listOf(
+            "all" to "All", "movie" to "🎬 Movies", "song" to "🎵 Songs"
+        )) {
+            val chip = Ui.text(this, label, 13f, Ui.TEXT, bold = true).apply {
+                setPadding(dp(14), dp(7), dp(14), dp(7))
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dp(8) }
+                setOnClickListener {
+                    filterType = key
+                    styleChips()
+                    refresh()
+                }
+            }
+            chipViews[key] = chip
+            chipsRow.addView(chip)
+        }
+        root.addView(chipsRow)
+        styleChips()
+
+        sectionTitle = Ui.text(this, "Latest Updates", 17f, Ui.TEXT, bold = true).apply {
+            setPadding(dp(14), dp(14), dp(14), dp(2))
+        }
+        root.addView(sectionTitle)
 
         progress = ProgressBar(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -138,50 +206,40 @@ class MainActivity : Activity() {
             )
         }
         root.addView(progress)
-
-        status = Ui.text(this, "Loading library…", 14f, Ui.DIM, gravity = Gravity.CENTER)
+        status = Ui.text(this, "Loading library…", 14f, Ui.DIM, gravity = Gravity.CENTER).apply {
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
         root.addView(status)
 
-        adapter = PosterAdapter()
-        grid = GridView(this).apply {
-            numColumns = 3
-            horizontalSpacing = dp(8)
-            verticalSpacing = dp(10)
-            stretchMode = GridView.STRETCH_COLUMN_WIDTH
+        // ---------- Poster grid ----------
+        adapter = PosterRvAdapter()
+        recycler = RecyclerView(this).apply {
+            layoutManager = GridLayoutManager(this@MainActivity, 3)
+            adapter = this@MainActivity.adapter
+            setPadding(dp(10), dp(2), dp(10), dp(8))
+            clipToPadding = false
+            addItemDecoration(object : RecyclerView.ItemDecoration() {
+                override fun getItemOffsets(
+                    outRect: Rect, view: View, parent: RecyclerView, state: RecyclerView.State
+                ) {
+                    outRect.set(dp(4), dp(4), dp(4), dp(12))
+                }
+            })
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            adapter = this@MainActivity.adapter
-            setOnItemClickListener { _, _, pos, _ ->
-                val movie = this@MainActivity.adapter.visible[pos]
-                if (this@MainActivity.filterType == "recent") {
-                    // Recently Played: tapping resumes right away.
-                    val entry = ProgressStore.get(this@MainActivity, movie.id)
-                    if (entry != null && entry.url.isNotBlank()) {
-                        startActivity(
-                            Intent(this@MainActivity, PlayerActivity::class.java)
-                                .putExtra("url", entry.url)
-                                .putExtra("title", entry.title)
-                                .putExtra("id", entry.id)
-                                .putExtra("poster", entry.poster)
-                                .putExtra("type", entry.type)
-                                .putExtra("startAt", if (entry.done) 0.0 else entry.pos)
-                        )
-                        return@setOnItemClickListener
-                    }
-                }
-                startActivity(
-                    Intent(this@MainActivity, DetailActivity::class.java)
-                        .putExtra("movie", movie.toJson().toString())
-                )
-            }
         }
-        root.addView(grid)
+        root.addView(recycler)
+
+        // ---------- Bottom nav ----------
+        root.addView(buildNav())
+
+        // ---------- Mondiad banner ----------
         root.addView(Ads.banner(this))
 
         setContentView(root)
         loadCatalog()
-        refreshContinue()
+        refreshHero()
         refreshAccountChip()
         checkUpdate()
         showCrashTraceIfAny()
@@ -206,61 +264,50 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        refreshContinue()
+        if (section == "home") refreshHero()
         refreshAccountChip()
-        if (filterType == "recent") refresh()
+        refresh()
     }
 
-    // ---------- Google account ----------
+    // ---------- Header account ----------
 
     private fun refreshAccountChip() {
-        if (!::accountBtn.isInitialized) return
-        val acct = try {
-            Auth.lastAccount(this)
-        } catch (e: Exception) {
-            null
-        }
-        accountBtn.text = if (acct != null) {
-            "👤 " + (acct.displayName?.substringBefore(" ") ?: acct.email ?: "Account")
-        } else {
-            "Sign in"
-        }
-    }
-
-    private fun onAccountTap() {
+        if (!::signInBtn.isInitialized) return
         val acct = try {
             Auth.lastAccount(this)
         } catch (t: Throwable) {
-            android.widget.Toast.makeText(
-                this, "Sign-in check failed: ${t.javaClass.simpleName}: ${t.message}",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-            return
+            null
         }
         if (acct == null) {
-            try {
-                @Suppress("DEPRECATION")
-                startActivityForResult(Auth.signInIntent(this), Auth.RC_SIGN_IN)
-            } catch (t: Throwable) {
-                android.widget.Toast.makeText(
-                    this, "Sign-in start failed: ${t.javaClass.simpleName}: ${t.message}",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
-            }
+            signInBtn.visibility = View.VISIBLE
+            avatarBox.visibility = View.GONE
             return
         }
-        android.app.AlertDialog.Builder(this)
-            .setTitle(acct.displayName ?: "Google account")
-            .setMessage(acct.email ?: "")
-            .setNegativeButton("Close", null)
-            .setPositiveButton("Sign out") { _, _ ->
-                Auth.signOut(this) {
-                    refreshAccountChip()
-                    android.widget.Toast.makeText(this, "Signed out", android.widget.Toast.LENGTH_SHORT)
-                        .show()
-                }
-            }
-            .show()
+        signInBtn.visibility = View.GONE
+        avatarBox.visibility = View.VISIBLE
+        val photo = acct.photoUrl
+        if (photo != null) {
+            avatarInitial.visibility = View.GONE
+            avatarImg.visibility = View.VISIBLE
+            PosterLoader.loadCircular(photo.toString(), avatarImg)
+        } else {
+            avatarImg.visibility = View.GONE
+            avatarInitial.visibility = View.VISIBLE
+            avatarInitial.text =
+                acct.displayName?.firstOrNull()?.uppercaseChar()?.toString() ?: "👤"
+        }
+    }
+
+    private fun onSignInTap() {
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(Auth.signInIntent(this), Auth.RC_SIGN_IN)
+        } catch (t: Throwable) {
+            android.widget.Toast.makeText(
+                this, "Sign-in start failed: ${t.javaClass.simpleName}: ${t.message}",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -289,94 +336,121 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- Continue Watching ----------
+    // ---------- Hero: Continue Watching ----------
 
-    private fun buildContinueCard(): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Ui.PANEL)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        }
-        continuePoster = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            layoutParams = LinearLayout.LayoutParams(dp(46), dp(68))
-        }
-        card.addView(continuePoster)
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { marginStart = dp(10) }
-        }
-        col.addView(Ui.text(this, "⏵ CONTINUE WATCHING", 11f, Ui.GREEN, bold = true))
-        continueTitle = Ui.text(this, "", 15f, Ui.TEXT, bold = true).apply { maxLines = 1 }
-        col.addView(continueTitle)
-        continueMeta = Ui.text(this, "", 12f, Ui.DIM)
-        col.addView(continueMeta)
-        val track = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(5)
-            ).apply { topMargin = dp(6) }
-        }
-        continueFill = View(this).apply { setBackgroundColor(Ui.GREEN) }
-        continueRest = View(this).apply { setBackgroundColor(Ui.CARD) }
-        track.addView(continueFill)
-        track.addView(continueRest)
-        col.addView(track)
-        card.addView(col)
-        val play = Ui.text(this, "▶", 26f, Ui.GREEN, gravity = Gravity.CENTER).apply {
-            setPadding(dp(12), dp(8), dp(6), dp(8))
-            setOnClickListener {
-                continueEntry?.let { e ->
-                    startActivity(
-                        Intent(this@MainActivity, PlayerActivity::class.java)
-                            .putExtra("url", e.url)
-                            .putExtra("title", e.title)
-                            .putExtra("id", e.id)
-                            .putExtra("poster", e.poster)
-                            .putExtra("type", e.type)
-                            .putExtra("startAt", e.pos)
-                    )
+    private fun buildHero(): FrameLayout {
+        val frame = FrameLayout(this).apply {
+            visibility = View.GONE
+            background = Ui.rounded(this@MainActivity, Ui.CARD, 14)
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(14).toFloat())
                 }
             }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
+            ).apply { setMargins(dp(14), dp(10), dp(14), 0) }
+            setOnClickListener { heroEntry?.let { resumeEntry(it) } }
         }
-        card.addView(play)
-        val dismiss = Ui.text(this, "✕", 15f, Ui.DIM, gravity = Gravity.CENTER).apply {
-            setPadding(dp(6), dp(8), dp(2), dp(8))
-            setOnClickListener {
-                continueEntry?.let { ProgressStore.remove(this@MainActivity, it.id) }
-                refreshContinue()
-                if (filterType == "recent") refresh()
+        heroImg = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        frame.addView(heroImg)
+        val fade = Ui.fade(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(96)
+            ).apply { gravity = Gravity.BOTTOM }
+        }
+        frame.addView(fade)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(76), dp(12))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.BOTTOM }
+        }
+        col.addView(Ui.text(this, "⏵ CONTINUE WATCHING", 10f, Ui.GREEN, bold = true))
+        heroTitle = Ui.text(this, "", 16f, Color.WHITE, bold = true).apply { maxLines = 1 }
+        col.addView(heroTitle)
+        heroMeta = Ui.text(this, "", 11.5f, Color.argb(215, 255, 255, 255))
+        col.addView(heroMeta)
+        frame.addView(col)
+        val play = Ui.text(this, "▶", 20f, Color.BLACK, gravity = Gravity.CENTER).apply {
+            background = Ui.rounded(this@MainActivity, Ui.GREEN, 24)
+            layoutParams = FrameLayout.LayoutParams(dp(48), dp(48)).apply {
+                gravity = Gravity.END or Gravity.BOTTOM
+                setMargins(0, 0, dp(12), dp(12))
             }
+            setOnClickListener { heroEntry?.let { resumeEntry(it) } }
         }
-        card.addView(dismiss)
-        return card
+        frame.addView(play)
+        val dismiss = Ui.text(this, "✕", 13f, Color.argb(200, 255, 255, 255), gravity = Gravity.CENTER)
+            .apply {
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { gravity = Gravity.END or Gravity.TOP }
+                setOnClickListener {
+                    heroEntry?.let { ProgressStore.remove(this@MainActivity, it.id) }
+                    refreshHero()
+                    refresh()
+                }
+            }
+        frame.addView(dismiss)
+        val track = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(4)
+            ).apply { gravity = Gravity.BOTTOM }
+        }
+        heroFill = View(this).apply { setBackgroundColor(Ui.GREEN) }
+        heroRest = View(this).apply {
+            setBackgroundColor(Color.argb(70, 255, 255, 255))
+        }
+        track.addView(heroFill)
+        track.addView(heroRest)
+        frame.addView(track)
+        return frame
     }
 
-    private fun refreshContinue() {
-        if (!::continueCard.isInitialized) return
+    private fun resumeEntry(e: ProgressStore.Entry) {
+        startActivity(
+            Intent(this, PlayerActivity::class.java)
+                .putExtra("url", e.url)
+                .putExtra("title", e.title)
+                .putExtra("id", e.id)
+                .putExtra("poster", e.poster)
+                .putExtra("type", e.type)
+                .putExtra("startAt", e.pos)
+        )
+    }
+
+    private fun refreshHero() {
+        if (!::hero.isInitialized) return
         val e = ProgressStore.latestUnfinished(this)
-        continueEntry = e
-        if (e == null) {
-            continueCard.visibility = View.GONE
+        heroEntry = e
+        if (e == null || section != "home") {
+            hero.visibility = View.GONE
             return
         }
-        continueCard.visibility = View.VISIBLE
-        PosterLoader.load(e.poster, continuePoster)
-        continueTitle.text = e.title
+        hero.visibility = View.VISIBLE
+        val wide = all.find { it.id == e.id }?.backdropUrl()
+        PosterLoader.load(wide ?: e.poster, heroImg)
+        heroTitle.text = e.title
         val leftSec = (e.dur - e.pos).coerceAtLeast(0.0).toInt()
         val leftText = when {
             leftSec >= 3600 -> "${leftSec / 3600}h ${(leftSec % 3600) / 60}m left"
             leftSec >= 60 -> "${leftSec / 60} min left"
             else -> "$leftSec sec left"
         }
-        continueMeta.text = "$leftText · resume at ${fmtTime(e.pos)}"
+        heroMeta.text = "$leftText · resume at ${fmtTime(e.pos)}"
         val frac = if (e.dur > 0) (e.pos / e.dur).toFloat().coerceIn(0f, 1f) else 0f
-        continueFill.layoutParams = LinearLayout.LayoutParams(0, dp(5), frac)
-        continueRest.layoutParams = LinearLayout.LayoutParams(0, dp(5), 1f - frac)
+        heroFill.layoutParams = LinearLayout.LayoutParams(0, dp(4), frac)
+        heroRest.layoutParams = LinearLayout.LayoutParams(0, dp(4), 1f - frac)
     }
 
     private fun fmtTime(sec: Double): String {
@@ -387,7 +461,67 @@ class MainActivity : Activity() {
         return if (h > 0) "%d:%02d:%02d".format(h, m, ss) else "%d:%02d".format(m, ss)
     }
 
-    // ---------- In-app update ----------
+    // ---------- Bottom nav ----------
+
+    private fun buildNav(): LinearLayout {
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Ui.PANEL)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        for ((key, icon, label) in listOf(
+            Triple("home", "🏠", "Home"),
+            Triple("recent", "⏱", "Recent"),
+            Triple("profile", "👤", "Profile")
+        )) {
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setPadding(0, dp(3), 0, dp(3))
+                setOnClickListener { onNavTap(key) }
+            }
+            val iconTv = Ui.text(this, icon, 19f, Ui.DIM, gravity = Gravity.CENTER)
+            val labelTv = Ui.text(this, label, 10.5f, Ui.DIM, bold = true, gravity = Gravity.CENTER)
+            item.addView(iconTv)
+            item.addView(labelTv)
+            navCols[key] = iconTv to labelTv
+            nav.addView(item)
+        }
+        styleNav()
+        return nav
+    }
+
+    private fun onNavTap(key: String) {
+        if (key == "profile") {
+            startActivity(Intent(this, ProfileActivity::class.java))
+            return
+        }
+        section = key
+        styleNav()
+        chipsRow.visibility = if (section == "home") View.VISIBLE else View.GONE
+        sectionTitle.text = if (section == "home") "Latest Updates" else "Recently Played"
+        refreshHero()
+        refresh()
+    }
+
+    private fun styleNav() {
+        for ((key, pair) in navCols) {
+            val active = key == section
+            pair.first.setTextColor(if (active) Ui.GREEN else Ui.DIM)
+            pair.second.setTextColor(if (active) Ui.GREEN else Ui.DIM)
+        }
+    }
+
+    private fun styleChips() {
+        for ((key, chip) in chipViews) {
+            val active = key == filterType
+            chip.setTextColor(if (active) Color.BLACK else Ui.TEXT)
+            chip.background = Ui.rounded(this, if (active) Ui.GREEN else Ui.CARD, 18)
+        }
+    }
+
+    // ---------- Updates ----------
 
     private fun checkUpdate() {
         io.execute {
@@ -408,119 +542,44 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startUpdateDownload(info: Updater.Info) {
-        if (android.os.Build.VERSION.SDK_INT >= 26 &&
-            !packageManager.canRequestPackageInstalls()
-        ) {
-            android.widget.Toast.makeText(
-                this,
-                "Allow installs for this app once, then tap the update banner again",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-            startActivity(
-                Intent(
-                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    android.net.Uri.parse("package:$packageName")
-                )
-            )
-            return
-        }
-        val file = File(getExternalFilesDir(null), "update.apk")
-        file.delete()
-        val req = android.app.DownloadManager.Request(android.net.Uri.parse(info.apkUrl)).apply {
-            setTitle("Redowansky Library v${info.versionName}")
-            setMimeType("application/vnd.android.package-archive")
-            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE)
-            setDestinationInExternalFilesDir(
-                this@MainActivity, null, "update.apk"
-            )
-        }
-        val dm = getSystemService(android.content.Context.DOWNLOAD_SERVICE)
-            as android.app.DownloadManager
-        val id = dm.enqueue(req)
-        android.widget.Toast.makeText(this, "Downloading update…", android.widget.Toast.LENGTH_SHORT)
-            .show()
-        io.execute {
-            var done = false
-            while (!done) {
-                Thread.sleep(2000)
-                val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(id))
-                if (cursor != null && cursor.moveToFirst()) {
-                    val st = cursor.getInt(
-                        cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS)
-                    )
-                    if (st == android.app.DownloadManager.STATUS_SUCCESSFUL) {
-                        done = true
-                        main.post { installUpdate(file) }
-                    } else if (st == android.app.DownloadManager.STATUS_FAILED) {
-                        done = true
-                        main.post {
-                            android.widget.Toast.makeText(
-                                this@MainActivity, "Update download failed",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                }
-                cursor?.close()
-            }
-        }
-    }
-
-    private fun installUpdate(file: File) {
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            this, "$packageName.fileprovider", file
-        )
-        startActivity(
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        )
-    }
-
-    private fun styleFilters() {
-        for ((key, b) in filterButtons) {
-            val active = key == filterType
-            b.setTextColor(if (active) android.graphics.Color.BLACK else Ui.TEXT)
-            (b.background as? android.graphics.drawable.GradientDrawable)?.setColor(
-                if (active) Ui.GREEN else Ui.CARD
-            )
-        }
-    }
+    // ---------- Catalog + grid ----------
 
     private fun loadCatalog() {
         progress.visibility = View.VISIBLE
         status.text = "Loading library…"
+        status.visibility = View.VISIBLE
         io.execute {
             try {
                 val movies = Catalog.fetch()
                 main.post {
                     all = movies
                     progress.visibility = View.GONE
+                    refreshHero()
                     refresh()
                 }
             } catch (e: Exception) {
                 main.post {
                     progress.visibility = View.GONE
-                    status.text = "⚠️ Couldn't load the library (${e.message ?: "network error"}).\nTap to retry."
+                    status.visibility = View.VISIBLE
+                    status.text =
+                        "⚠️ Couldn't load the library (${e.message ?: "network error"}).\nTap to retry."
                     status.setOnClickListener { loadCatalog() }
                 }
             }
         }
     }
 
-    private var progressById: Map<String, ProgressStore.Entry> = emptyMap()
-
     private fun refresh() {
+        if (!::adapter.isInitialized) return
         val entries = ProgressStore.all(this)
         progressById = entries.associateBy { it.id }
         val visible: List<Movie>
-        if (filterType == "recent") {
+        if (section == "recent") {
             val byId = all.associateBy { it.id }
             visible = entries.mapNotNull { e ->
-                if (query.isNotEmpty() && !e.title.lowercase().contains(query)) return@mapNotNull null
+                if (query.isNotEmpty() && !e.title.lowercase().contains(query)) {
+                    return@mapNotNull null
+                }
                 byId[e.id] ?: Movie(
                     id = e.id,
                     title = e.title,
@@ -542,13 +601,10 @@ class MainActivity : Activity() {
         }
         adapter.visible = visible
         adapter.notifyDataSetChanged()
-        status.visibility = if (visible.isEmpty() && (all.isNotEmpty() || filterType == "recent")) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        val showStatus = visible.isEmpty() && progress.visibility != View.VISIBLE
+        status.visibility = if (showStatus) View.VISIBLE else View.GONE
         if (visible.isEmpty()) {
-            status.text = if (filterType == "recent") {
+            status.text = if (section == "recent") {
                 "Nothing here yet — play something and it will show up ⏱"
             } else {
                 "Nothing matches."
@@ -557,71 +613,158 @@ class MainActivity : Activity() {
         }
     }
 
-    inner class PosterAdapter : BaseAdapter() {
-        var visible: List<Movie> = emptyList()
-        override fun getCount(): Int = visible.size
-        override fun getItem(pos: Int): Movie = visible[pos]
-        override fun getItemId(pos: Int): Long = pos.toLong()
+    private fun onPosterClick(movie: Movie) {
+        if (section == "recent") {
+            val entry = ProgressStore.get(this, movie.id)
+            if (entry != null && entry.url.isNotBlank()) {
+                startActivity(
+                    Intent(this, PlayerActivity::class.java)
+                        .putExtra("url", entry.url)
+                        .putExtra("title", entry.title)
+                        .putExtra("id", entry.id)
+                        .putExtra("poster", entry.poster)
+                        .putExtra("type", entry.type)
+                        .putExtra("startAt", if (entry.done) 0.0 else entry.pos)
+                )
+                return
+            }
+        }
+        startActivity(
+            Intent(this, DetailActivity::class.java)
+                .putExtra("movie", movie.toJson().toString())
+        )
+    }
 
-        override fun getView(pos: Int, convertView: View?, parent: ViewGroup?): View {
-            val movie = visible[pos]
-            val cell = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
+    inner class PosterRvAdapter : RecyclerView.Adapter<PosterRvAdapter.VH>() {
+
+        var visible: List<Movie> = emptyList()
+
+        inner class VH(val cell: LinearLayout) : RecyclerView.ViewHolder(cell) {
+            val frame: FrameLayout = cell.findViewById(1)
+            val iv: ImageView = cell.findViewById(2)
+            val typeBadge: TextView = cell.findViewById(3)
+            val yearBadge: TextView = cell.findViewById(4)
+            val progTrack: LinearLayout = cell.findViewById(5)
+            val progFill: View = cell.findViewById(6)
+            val title: TextView = cell.findViewById(7)
+            val meta: TextView = cell.findViewById(8)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val cell = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                layoutParams = AbsListView.LayoutParams(
+                layoutParams = RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                val iv = ImageView(this@MainActivity).apply {
-                    id = 1
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(Ui.CARD)
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
-                    )
-                }
-                addView(iv)
-                val track = LinearLayout(this@MainActivity).apply {
-                    id = 4
-                    orientation = LinearLayout.HORIZONTAL
-                    visibility = View.GONE
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp(4)
-                    )
-                }
-                val fill = View(this@MainActivity).apply {
-                    id = 5
-                    setBackgroundColor(Ui.GREEN)
-                }
-                val rest = View(this@MainActivity).apply { setBackgroundColor(Ui.CARD) }
-                track.addView(fill)
-                track.addView(rest)
-                addView(track)
-                val tv = Ui.text(this@MainActivity, "", 12f, Ui.TEXT).apply {
-                    id = 2
-                    maxLines = 2
-                    setPadding(0, dp(4), 0, 0)
-                }
-                addView(tv)
-                val yv = Ui.text(this@MainActivity, "", 11f, Ui.DIM).apply { id = 3 }
-                addView(yv)
             }
-            val iv = cell.findViewById<ImageView>(1)
-            val tv = cell.findViewById<TextView>(2)
-            val yv = cell.findViewById<TextView>(3)
-            val track = cell.findViewById<LinearLayout>(4)
-            PosterLoader.load(movie.posterUrl(), iv)
-            tv.text = movie.title
+            val colW = (resources.displayMetrics.widthPixels - dp(28)) / 3
+            val posterH = (colW * 1.42f).toInt()
+            val frame = FrameLayout(this@MainActivity).apply {
+                id = 1
+                background = Ui.rounded(this@MainActivity, Ui.CARD, 12)
+                clipToOutline = true
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, dp(12).toFloat())
+                    }
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, posterH
+                )
+            }
+            val iv = ImageView(this@MainActivity).apply {
+                id = 2
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            frame.addView(iv)
+            val fade = Ui.fade(this@MainActivity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(38)
+                ).apply { gravity = Gravity.BOTTOM }
+            }
+            frame.addView(fade)
+            val typeBadge = Ui.scrimBadge(this@MainActivity, "", Ui.GREEN).apply {
+                id = 3
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.END or Gravity.TOP
+                    setMargins(0, dp(6), dp(6), 0)
+                }
+            }
+            frame.addView(typeBadge)
+            val yearBadge = Ui.badge(this@MainActivity, "", Ui.GREEN, Color.BLACK).apply {
+                id = 4
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.START or Gravity.BOTTOM
+                    setMargins(dp(6), 0, 0, dp(6))
+                }
+            }
+            frame.addView(yearBadge)
+            val progTrack = LinearLayout(this@MainActivity).apply {
+                id = 5
+                orientation = LinearLayout.HORIZONTAL
+                visibility = View.GONE
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(4)
+                ).apply { gravity = Gravity.BOTTOM }
+            }
+            val fill = View(this@MainActivity).apply {
+                id = 6
+                setBackgroundColor(Ui.GREEN)
+            }
+            val rest = View(this@MainActivity).apply {
+                setBackgroundColor(Color.argb(70, 255, 255, 255))
+            }
+            progTrack.addView(fill)
+            progTrack.addView(rest)
+            frame.addView(progTrack)
+            cell.addView(frame)
+
+            val title = Ui.text(this@MainActivity, "", 12f, Ui.TEXT, bold = true).apply {
+                id = 7
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(0, dp(6), 0, 0)
+            }
+            cell.addView(title)
+            val meta = Ui.text(this@MainActivity, "", 10.5f, Ui.DIM).apply {
+                id = 8
+                maxLines = 1
+            }
+            cell.addView(meta)
+            return VH(cell)
+        }
+
+        override fun getItemCount(): Int = visible.size
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val movie = visible[position]
+            PosterLoader.load(movie.posterUrl(), holder.iv)
+            holder.typeBadge.text = if (movie.type == "song") "SONG" else "MOVIE"
+            if (!movie.year.isNullOrBlank()) {
+                holder.yearBadge.visibility = View.VISIBLE
+                holder.yearBadge.text = movie.year
+            } else {
+                holder.yearBadge.visibility = View.GONE
+            }
+            holder.title.text = movie.title
             val entry = progressById[movie.id]
             if (entry != null && entry.dur > 0) {
-                track.visibility = View.VISIBLE
+                holder.progTrack.visibility = View.VISIBLE
                 val frac = (entry.pos / entry.dur).toFloat().coerceIn(0f, 1f)
-                track.findViewById<View>(5).layoutParams =
-                    LinearLayout.LayoutParams(0, dp(4), frac)
-                (track.getChildAt(1)).layoutParams =
+                holder.progFill.layoutParams = LinearLayout.LayoutParams(0, dp(4), frac)
+                (holder.progTrack.getChildAt(1)).layoutParams =
                     LinearLayout.LayoutParams(0, dp(4), 1f - frac)
             } else {
-                track.visibility = View.GONE
+                holder.progTrack.visibility = View.GONE
             }
-            yv.text = if (filterType == "recent" && entry != null) {
+            holder.meta.text = if (section == "recent" && entry != null) {
                 if (entry.done) {
                     "✓ Watched"
                 } else {
@@ -630,12 +773,11 @@ class MainActivity : Activity() {
                 }
             } else {
                 listOfNotNull(
-                    movie.year,
                     movie.vote?.let { "★ $it" },
-                    if (movie.type == "song") "🎵" else null
+                    if (movie.type == "song") "🎵 Song" else "🎬 Movie"
                 ).joinToString(" · ")
             }
-            return cell
+            holder.cell.setOnClickListener { onPosterClick(movie) }
         }
     }
 }

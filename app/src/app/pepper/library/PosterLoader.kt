@@ -45,6 +45,50 @@ object PosterLoader {
         }
     }
 
+    /** Load an image cropped into a circle (avatars). */
+    fun loadCircular(url: String?, into: ImageView) {
+        into.tag = url?.let { "$it#circle" }
+        if (url == null) {
+            into.setImageBitmap(null)
+            return
+        }
+        val key = "$url#circle"
+        cache.get(key)?.let {
+            into.setImageBitmap(it)
+            return
+        }
+        cache.get(url)?.let { src ->
+            val c = circular(src)
+            cache.put(key, c)
+            into.setImageBitmap(c)
+            return
+        }
+        into.setImageBitmap(null)
+        pool.execute {
+            val bmp = fetch(url)
+            if (bmp != null) {
+                val c = circular(bmp)
+                cache.put(key, c)
+                main.post { if (into.tag == key) into.setImageBitmap(c) }
+            }
+        }
+    }
+
+    private fun circular(src: Bitmap): Bitmap {
+        val size = minOf(src.width, src.height)
+        val squared = Bitmap.createBitmap(
+            src, (src.width - size) / 2, (src.height - size) / 2, size, size
+        )
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        paint.shader = android.graphics.BitmapShader(
+            squared, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        return out
+    }
+
     private fun fetch(url: String): Bitmap? {
         val file = diskDir?.let { File(it, hash(url) + ".img") }
         if (file != null && file.exists() && file.length() > 0) {

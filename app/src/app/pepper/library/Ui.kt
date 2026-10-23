@@ -61,4 +61,35 @@ object Ui {
             ViewGroup.LayoutParams.MATCH_PARENT, context.dp(hDp)
         )
     }
+
+    /** Rounded solid drawable — the workhorse of the modern UI. */
+    fun rounded(context: Context, color: Int, radiusDp: Int, strokeColor: Int = 0): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = context.dp(radiusDp).toFloat()
+            if (strokeColor != 0) setStroke(context.dp(1), strokeColor)
+        }
+
+    /** Small pill badge that sits on poster cards (type, year, rating…). */
+    fun badge(context: Context, label: String, bg: Int, fg: Int): TextView =
+        TextView(context).apply {
+            text = label
+            textSize = 9f
+            setTextColor(fg)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(context.dp(6), context.dp(2), context.dp(6), context.dp(3))
+            background = rounded(context, bg, 6)
+        }
+
+    /** Semi-transparent dark pill used on top of artwork. */
+    fun scrimBadge(context: Context, label: String, fg: Int): TextView =
+        badge(context, label, android.graphics.Color.argb(190, 0, 0, 0), fg)
+
+    /** Bottom-to-top black fade placed over the lower part of artwork. */
+    fun fade(context: Context): View = View(context).apply {
+        background = GradientDrawable(
+            GradientDrawable.Orientation.BOTTOM_TOP,
+            intArrayOf(android.graphics.Color.argb(200, 0, 0, 0), android.graphics.Color.TRANSPARENT)
+        )
+    }
 }
