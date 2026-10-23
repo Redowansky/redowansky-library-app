@@ -2,179 +2,219 @@ package app.pepper.library
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.widget.AbsListView
+import android.widget.BaseAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.GridView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import com.mndiad.android.sdk.Mnd
-import com.mndiad.android.sdk.banners.BannerCallbacks
-import com.mndiad.android.sdk.banners.BannerPosition
-import com.mndiad.android.sdk.banners.BannerSize
-import com.mndiad.android.sdk.banners.BannerView
+import android.widget.TextView
+import app.pepper.library.Ui.dp
+import java.io.File
+import java.util.concurrent.Executors
 
 /**
- * Redowansky Library — a thin WebView wrapper for https://redowansky.bond
- * with a Mondiad banner pinned to the bottom.
- *
- * PILOT BUILD: Mondiad demo mode is ON and the zone id is a placeholder.
- * Demo mode shows Mondiad test ads without a real zone, so the banner
- * integration can be device-tested before the app is registered.
- * When the real app banner zone exists, set DEMO_MODE = false and
- * ZONE_ID to the zone id from the Mondiad dashboard, then rebuild.
+ * Redowansky Library — native home screen.
+ * Catalog comes from the site's own JSON API (GET /api/movies, the same
+ * feed the Aniyomi extension uses); posters, search and filtering are
+ * all local/native. Not a WebView.
  */
 class MainActivity : Activity() {
 
-    companion object {
-        private const val HOME_URL = "https://redowansky.bond"
-        private const val DEMO_MODE = true
-        private const val ZONE_ID = "0" // placeholder — replaced by the real Mondiad app banner zone id
-        private const val TAG = "LibraryApp"
-    }
+    private val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor()
 
-    private lateinit var webView: WebView
+    private var all: List<Movie> = emptyList()
+    private var filterType: String = "all"
+    private var query: String = ""
+
+    private lateinit var grid: GridView
+    private lateinit var status: TextView
     private lateinit var progress: ProgressBar
+    private lateinit var adapter: PosterAdapter
+    private val filterButtons = mutableMapOf<String, Button>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Mondiad global config must be set before any banner loads.
-        Mnd.banners.demoMode = DEMO_MODE
-        Mnd.banners.logLevel = Log.INFO
+        Ads.init()
+        PosterLoader.init(File(cacheDir, "posters").apply { mkdirs() })
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Ui.BG)
+            setPadding(dp(12), dp(12), dp(12), 0)
         }
 
-        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
+        root.addView(Ui.text(this, "🎬 Redowansky's Library", 20f, Ui.TEXT, bold = true))
+        root.addView(Ui.vspace(this, 10))
+
+        val search = EditText(this).apply {
+            hint = "Search titles…"
+            setHintTextColor(Ui.DIM)
+            setTextColor(Ui.TEXT)
+            setBackgroundColor(Ui.PANEL)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) {
+                    query = s?.toString()?.trim()?.lowercase() ?: ""
+                    refresh()
+                }
+
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+        }
+        root.addView(search)
+        root.addView(Ui.vspace(this, 10))
+
+        val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for ((key, label) in listOf("all" to "All", "movie" to "🎬 Movies", "song" to "🎵 Songs")) {
+            val b = Ui.ghostButton(this, label) {
+                filterType = key
+                styleFilters()
+                refresh()
+            }
+            b.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { marginEnd = dp(6) }
+            filterButtons[key] = b
+            filters.addView(b)
+        }
+        root.addView(filters)
+        styleFilters()
+        root.addView(Ui.vspace(this, 10))
+
+        progress = ProgressBar(this).apply {
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(3)
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
         root.addView(progress)
 
-        webView = WebView(this).apply {
+        status = Ui.text(this, "Loading library…", 14f, Ui.DIM, gravity = Gravity.CENTER)
+        root.addView(status)
+
+        adapter = PosterAdapter()
+        grid = GridView(this).apply {
+            numColumns = 3
+            horizontalSpacing = dp(8)
+            verticalSpacing = dp(10)
+            stretchMode = GridView.STRETCH_COLUMN_WIDTH
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                databaseEnabled = true
-                mediaPlaybackRequiresUserGesture = false
-                loadWithOverviewMode = true
-                useWideViewPort = true
-                builtInZoomControls = false
-                cacheMode = WebSettings.LOAD_DEFAULT
-            }
-            CookieManager.getInstance().also { cm ->
-                cm.setAcceptCookie(true)
-                cm.setAcceptThirdPartyCookies(this, true)
-            }
-            webChromeClient = object : WebChromeClient() {
-                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    this@MainActivity.progress.progress = newProgress
-                    this@MainActivity.progress.visibility = if (newProgress >= 100)
-                        android.view.View.GONE else android.view.View.VISIBLE
-                }
-            }
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(
-                    view: WebView?, request: WebResourceRequest?
-                ): Boolean {
-                    val uri = request?.url ?: return false
-                    return handleUri(uri)
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                    if (url == null) return false
-                    return handleUri(Uri.parse(url))
-                }
-            }
-            // Downloads (movies etc.) go to the real browser, which can
-            // save/stream them properly — WebView itself cannot.
-            setDownloadListener { url, _, _, _, _ ->
-                openExternal(Uri.parse(url))
+            adapter = this@MainActivity.adapter
+            setOnItemClickListener { _, _, pos, _ ->
+                val movie = this@MainActivity.adapter.visible[pos]
+                startActivity(
+                    Intent(this@MainActivity, DetailActivity::class.java)
+                        .putExtra("movie", movie.toJson().toString())
+                )
             }
         }
-        root.addView(webView)
-
-        // Mondiad banner, 320x50, pinned under the WebView.
-        val banner = BannerView(this).apply {
-            zoneId = ZONE_ID
-            size = BannerSize.SMARTPHONE_BANNER
-            position = BannerPosition.VIEW
-            bannerCallbacks = object : BannerCallbacks {
-                override fun onAdShown() {
-                    Log.i(TAG, "Mondiad banner shown (demo=$DEMO_MODE)")
-                }
-
-                override fun onAdFailedToLoad(error: String) {
-                    Log.w(TAG, "Mondiad banner failed to load: $error")
-                }
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(50)
-            ).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        }
-        root.addView(banner)
+        root.addView(grid)
+        root.addView(Ads.banner(this))
 
         setContentView(root)
+        loadCatalog()
+    }
 
-        if (savedInstanceState == null) {
-            webView.loadUrl(HOME_URL)
-        } else {
-            webView.restoreState(savedInstanceState)
+    private fun styleFilters() {
+        for ((key, b) in filterButtons) {
+            val active = key == filterType
+            b.setTextColor(if (active) android.graphics.Color.BLACK else Ui.TEXT)
+            (b.background as? android.graphics.drawable.GradientDrawable)?.setColor(
+                if (active) Ui.GREEN else Ui.CARD
+            )
         }
     }
 
-    /** Keep library pages inside the app; send everything else out. */
-    private fun handleUri(uri: Uri): Boolean {
-        val host = uri.host ?: return false
-        val scheme = uri.scheme ?: return false
-        if ((scheme == "https" || scheme == "http") &&
-            (host == "redowansky.bond" || host.endsWith(".redowansky.bond"))
-        ) {
-            return false // WebView loads it
+    private fun loadCatalog() {
+        progress.visibility = View.VISIBLE
+        status.text = "Loading library…"
+        io.execute {
+            try {
+                val movies = Catalog.fetch()
+                main.post {
+                    all = movies
+                    progress.visibility = View.GONE
+                    refresh()
+                }
+            } catch (e: Exception) {
+                main.post {
+                    progress.visibility = View.GONE
+                    status.text = "⚠️ Couldn't load the library (${e.message ?: "network error"}).\nTap to retry."
+                    status.setOnClickListener { loadCatalog() }
+                }
+            }
         }
-        openExternal(uri)
-        return true
     }
 
-    private fun openExternal(uri: Uri) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (e: Exception) {
-            Log.w(TAG, "No app can open $uri", e)
+    private fun refresh() {
+        val visible = all.filter { m ->
+            (filterType == "all" || m.type == filterType) &&
+                (query.isEmpty() || m.title.lowercase().contains(query))
+        }
+        adapter.visible = visible
+        adapter.notifyDataSetChanged()
+        status.visibility = if (visible.isEmpty() && all.isNotEmpty()) View.VISIBLE else View.GONE
+        if (visible.isEmpty() && all.isNotEmpty()) {
+            status.text = "Nothing matches."
+            status.setOnClickListener(null)
         }
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        webView.saveState(outState)
-    }
+    inner class PosterAdapter : BaseAdapter() {
+        var visible: List<Movie> = emptyList()
+        override fun getCount(): Int = visible.size
+        override fun getItem(pos: Int): Movie = visible[pos]
+        override fun getItemId(pos: Int): Long = pos.toLong()
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+        override fun getView(pos: Int, convertView: View?, parent: ViewGroup?): View {
+            val movie = visible[pos]
+            val cell = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = AbsListView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                val iv = ImageView(this@MainActivity).apply {
+                    id = 1
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackgroundColor(Ui.CARD)
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
+                    )
+                }
+                addView(iv)
+                val tv = Ui.text(this@MainActivity, "", 12f, Ui.TEXT).apply {
+                    id = 2
+                    maxLines = 2
+                    setPadding(0, dp(4), 0, 0)
+                }
+                addView(tv)
+                val yv = Ui.text(this@MainActivity, "", 11f, Ui.DIM).apply { id = 3 }
+                addView(yv)
+            }
+            val iv = cell.findViewById<ImageView>(1)
+            val tv = cell.findViewById<TextView>(2)
+            val yv = cell.findViewById<TextView>(3)
+            PosterLoader.load(movie.posterUrl(), iv)
+            tv.text = movie.title
+            yv.text = listOfNotNull(
+                movie.year,
+                movie.vote?.let { "★ $it" },
+                if (movie.type == "song") "🎵" else null
+            ).joinToString(" · ")
+            return cell
+        }
     }
-
-    override fun onDestroy() {
-        webView.destroy()
-        super.onDestroy()
-    }
-
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 }

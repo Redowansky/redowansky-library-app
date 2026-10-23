@@ -1,9 +1,14 @@
 # Redowansky Library — Android app
 
-A thin WebView wrapper for https://redowansky.bond with a Mondiad banner
-(320×50) pinned at the bottom. Black/green, matching the site.
+A native Android app for https://redowansky.bond (v0.1 was a WebView
+wrapper; v0.2 is fully native). Catalog comes from the site's own JSON API
+(GET /api/movies — the same feed the Aniyomi extension uses). Native poster
+grid + search + Movies/Songs filters, native detail screen, native
+VideoView player streaming the direct mp4, DownloadManager downloads to
+the Downloads folder. Mondiad banner (320×50) at the bottom of the home
+and detail screens. Black/green, matching the site.
 
-- Package: `app.pepper.library` · version 0.1.0 (code 1) · minSdk 26, targetSdk 34
+- Package: `app.pepper.library` · version 0.2.0 (code 2) · minSdk 26, targetSdk 34
 - No secrets in the APK (unlike the VPN app): the site is public, the
   Mondiad zone id is public by design.
 - Downloads from the site are handed to the real browser (WebView can't save files).
