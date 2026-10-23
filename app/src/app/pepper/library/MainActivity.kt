@@ -57,6 +57,9 @@ class MainActivity : Activity() {
     private lateinit var updateBanner: TextView
     private var pendingUpdate: Updater.Info? = null
 
+    // Google account chip (header, top-right)
+    private lateinit var accountBtn: Button
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ads.init()
@@ -74,12 +77,8 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
         )
-        val versionName = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: ""
-        } catch (e: Exception) {
-            ""
-        }
-        header.addView(Ui.text(this, "v$versionName", 12f, Ui.DIM))
+        accountBtn = Ui.ghostButton(this, "Sign in") { onAccountTap() }
+        header.addView(accountBtn)
         root.addView(header)
         root.addView(Ui.vspace(this, 8))
 
@@ -183,13 +182,82 @@ class MainActivity : Activity() {
         setContentView(root)
         loadCatalog()
         refreshContinue()
+        refreshAccountChip()
         checkUpdate()
     }
 
     override fun onResume() {
         super.onResume()
         refreshContinue()
+        refreshAccountChip()
         if (filterType == "recent") refresh()
+    }
+
+    // ---------- Google account ----------
+
+    private fun refreshAccountChip() {
+        if (!::accountBtn.isInitialized) return
+        val acct = try {
+            Auth.lastAccount(this)
+        } catch (e: Exception) {
+            null
+        }
+        accountBtn.text = if (acct != null) {
+            "👤 " + (acct.displayName?.substringBefore(" ") ?: acct.email ?: "Account")
+        } else {
+            "Sign in"
+        }
+    }
+
+    private fun onAccountTap() {
+        val acct = try {
+            Auth.lastAccount(this)
+        } catch (e: Exception) {
+            null
+        }
+        if (acct == null) {
+            @Suppress("DEPRECATION")
+            startActivityForResult(Auth.signInIntent(this), Auth.RC_SIGN_IN)
+            return
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(acct.displayName ?: "Google account")
+            .setMessage(acct.email ?: "")
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Sign out") { _, _ ->
+                Auth.signOut(this) {
+                    refreshAccountChip()
+                    android.widget.Toast.makeText(this, "Signed out", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+            .show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != Auth.RC_SIGN_IN) return
+        try {
+            val acct = Auth.accountFromResult(data)
+            refreshAccountChip()
+            android.widget.Toast.makeText(
+                this, "Signed in as ${acct?.email ?: "Google account"}",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        } catch (e: com.google.android.gms.common.api.ApiException) {
+            // 12501 = user cancelled; anything else gets surfaced as-is.
+            if (e.statusCode != 12501) {
+                android.widget.Toast.makeText(
+                    this, "Sign-in failed (code ${e.statusCode})",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                this, "Sign-in failed: ${e.message}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     // ---------- Continue Watching ----------

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.mndiad.android.sdk" >
+
+    <uses-sdk android:minSdkVersion="21" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="com.android.chrome" />
+    </queries>
+
+    <application>
+        <activity
+            android:name="com.mndiad.android.sdk.push.components.RequestPermissionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent"
+            tools:targetApi="tiramisu" />
+    </application>
+
+</manifest>

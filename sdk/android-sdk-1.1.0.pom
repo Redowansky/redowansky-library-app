@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.mndiad</groupId>
+  <artifactId>android-sdk</artifactId>
+  <version>1.1.0</version>
+  <packaging>aar</packaging>
+  <name>Mondiad Android SDK</name>
+  <description>Enables you to incorporate ad monetization into your Android application</description>
+  <url>https://docs.sdk.mondiad.com</url>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>http://www.opensource.org/licenses/mit-license.php</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <email>contact@mondiad.com</email>
+      <organization>Mondiad</organization>
+      <organizationUrl>https://mondiad.com</organizationUrl>
+    </developer>
+  </developers>
+  <scm>
+    <url>SCM URL is private and not meant for public access</url>
+  </scm>
+</project>
