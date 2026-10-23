@@ -98,17 +98,17 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(4))
         }
-        val logo = FrameLayout(this).apply {
-            background = Ui.rounded(this@MainActivity, Ui.GREEN, 10)
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
+                }
+            }
             layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
         }
-        logo.addView(
-            Ui.text(this, "🎬", 17f, Color.BLACK, gravity = Gravity.CENTER).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-        )
         header.addView(logo)
 
         val search = EditText(this).apply {
