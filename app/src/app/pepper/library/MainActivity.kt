@@ -78,6 +78,15 @@ class MainActivity : Activity() {
         Ads.init()
         PosterLoader.init(File(cacheDir, "posters").apply { mkdirs() })
 
+        // If the previous run died, show the trapped trace as a full
+        // screen BEFORE building the real UI — if the crash lives in
+        // the UI build itself, a dialog at the end of onCreate would
+        // never get the chance to render.
+        CrashTrap.peek(this)?.let { trace ->
+            setContentView(buildCrashReport(trace))
+            return
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Ui.BG)
@@ -242,24 +251,36 @@ class MainActivity : Activity() {
         refreshHero()
         refreshAccountChip()
         checkUpdate()
-        showCrashTraceIfAny()
     }
 
-    /** If the previous run died, show exactly why (screenshot-friendly). */
-    private fun showCrashTraceIfAny() {
-        val trace = CrashTrap.peek(this) ?: return
-        val scroll = android.widget.ScrollView(this)
-        val tv = Ui.text(this, trace, 11f, Ui.TEXT).apply {
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            setTextIsSelectable(true)
+    /** Full-screen crash report: trace + a button that clears it and retries the real UI. */
+    private fun buildCrashReport(trace: String): LinearLayout {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Ui.BG)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
         }
-        scroll.addView(tv)
-        android.app.AlertDialog.Builder(this)
-            .setTitle("⚠️ Last crash — send Pepper a screenshot")
-            .setView(scroll)
-            .setPositiveButton("Clear") { _, _ -> CrashTrap.clear(this) }
-            .setNegativeButton("Later", null)
-            .show()
+        root.addView(
+            Ui.text(this, "⚠️ Last crash — screenshot this for Pepper", 16f, Ui.TEXT, bold = true)
+        )
+        root.addView(Ui.vspace(this, 10))
+        val scroll = android.widget.ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
+        scroll.addView(
+            Ui.text(this, trace, 11f, Ui.TEXT).apply { setTextIsSelectable(true) }
+        )
+        root.addView(scroll)
+        root.addView(Ui.vspace(this, 12))
+        root.addView(
+            Ui.greenButton(this, "Clear & open the app") {
+                CrashTrap.clear(this)
+                recreate()
+            }
+        )
+        return root
     }
 
     override fun onResume() {
