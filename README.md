@@ -3,12 +3,17 @@
 A native Android app for https://redowansky.bond (v0.1 was a WebView
 wrapper; v0.2 is fully native). Catalog comes from the site's own JSON API
 (GET /api/movies — the same feed the Aniyomi extension uses). Native poster
-grid + search + Movies/Songs filters, native detail screen, native
-VideoView player streaming the direct mp4, DownloadManager downloads to
-the Downloads folder. Mondiad banner (320×50) at the bottom of the home
+grid + search + Movies/Songs filters, native detail screen, and a native
+MPV player (aniyomi-mpv-lib 1.18.n — the same engine Aniyomi uses; the
+stock VideoView played sound-only on the library's HEVC/hvc1 titles)
+streaming the direct mp4 with tap/double-tap-seek controls. Tapping
+Download first shows a fullscreen ad screen (Mondiad 300x250, corner ✕
+after a 3s countdown, house-card fallback when Mondiad has no fill);
+closing it starts the DownloadManager download to the Downloads folder.
+arm64-v8a only (native mpv libs). Mondiad banner (320×50) at the bottom of the home
 and detail screens. Black/green, matching the site.
 
-- Package: `app.pepper.library` · version 0.2.0 (code 2) · minSdk 26, targetSdk 34
+- Package: `app.pepper.library` · version 0.3.0 (code 3) · minSdk 26, targetSdk 34
 - No secrets in the APK (unlike the VPN app): the site is public, the
   Mondiad zone id is public by design.
 - Downloads from the site are handed to the real browser (WebView can't save files).
@@ -41,6 +46,7 @@ Pipeline: aapt2 compile/link (app res + Mondiad SDK res merged) →
 classes reference their own library R) → kotlinc → d8 → zipalign → apksigner.
 
 Dependencies (in `app/prebuilt/`, public Maven artifacts):
+- aniyomi-mpv-lib 1.18.n (github.com/aniyomiorg/aniyomi-mpv-lib release AAR) — classes.jar + arm64 jni libs in `app/prebuilt/jni/`, cacert/subfont assets in `app/assets/`, res in `sdk/mpv-res/`
 - Mondiad Android SDK 1.1.0 (`com.mndiad:android-sdk`, Maven Central) — classes.jar from the AAR; its res is in `sdk/mondiad-res/`
 - AndroidX Core + Core-KTX 1.13.1 (Google Maven) — WindowInsetsCompat/ViewCompat used by the banner
 - kotlinx-coroutines 1.8.1 (Maven Central)

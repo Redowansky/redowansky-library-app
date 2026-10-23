@@ -37,7 +37,8 @@ object Ads {
     // PILOT: demo mode ON + placeholder zone until the app is registered
     // in Mondiad and a real Banner zone exists. Flip these two, rebuild.
     const val DEMO_MODE = true
-    const val ZONE_ID = "0"
+    const val ZONE_ID = "0" // home/detail 320x50 banner zone
+    const val FULLSCREEN_ZONE_ID = "0" // download ad 300x250 zone (may be the same id)
 
     fun init() {
         Mnd.banners.demoMode = DEMO_MODE

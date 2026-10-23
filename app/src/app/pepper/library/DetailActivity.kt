@@ -18,6 +18,8 @@ import java.io.File
 
 class DetailActivity : Activity() {
 
+    companion object { private const val REQ_AD = 42 }
+
     private lateinit var movie: Movie
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +83,7 @@ class DetailActivity : Activity() {
             if (src != null) {
                 body.addView(Ui.greenButton(this, "▶  Play") { play(src) })
                 body.addView(Ui.vspace(this, 10))
-                body.addView(Ui.ghostButton(this, "⬇  Download") { download(src) })
+                body.addView(Ui.ghostButton(this, "⬇  Download") { requestDownload(src) })
             } else {
                 body.addView(Ui.text(this, "No playable source for this title.", 14f, Ui.DIM))
             }
@@ -96,7 +98,7 @@ class DetailActivity : Activity() {
                 play.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     .apply { marginEnd = dp(8) }
                 row.addView(play)
-                val dl = Ui.ghostButton(this, "⬇") { download(src) }
+                val dl = Ui.ghostButton(this, "⬇") { requestDownload(src) }
                 row.addView(dl)
                 body.addView(row)
             }
@@ -116,6 +118,24 @@ class DetailActivity : Activity() {
                 .putExtra("url", src.url)
                 .putExtra("title", movie.title)
         )
+    }
+
+    private var pendingSource: Source? = null
+
+    /** Show the fullscreen ad first; the download starts when it closes. */
+    private fun requestDownload(src: Source) {
+        pendingSource = src
+        @Suppress("DEPRECATION")
+        startActivityForResult(Intent(this, AdActivity::class.java), REQ_AD)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_AD && resultCode == RESULT_OK) {
+            pendingSource?.let { download(it) }
+        }
+        pendingSource = null
     }
 
     private fun download(src: Source) {
