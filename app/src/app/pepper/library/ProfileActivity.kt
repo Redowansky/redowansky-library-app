@@ -115,8 +115,103 @@ class ProfileActivity : Activity() {
             Ui.ghostButton(this, "🔄  Check for updates") { manualUpdateCheck() }
         )
 
+        // ---------- Ask for a movie ----------
+        root.addView(Ui.vspace(this, 28))
+        root.addView(
+            View(this).apply {
+                setBackgroundColor(Ui.CARD)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
+                )
+            }
+        )
+        root.addView(Ui.vspace(this, 18))
+        root.addView(Ui.text(this, "Can't find a movie?", 14f, Ui.TEXT, bold = true))
+        root.addView(Ui.vspace(this, 4))
+        root.addView(
+            Ui.text(this, "Ask for it — if it can be found, it joins the library.", 12f, Ui.DIM)
+        )
+        root.addView(Ui.vspace(this, 12))
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        val input = android.widget.EditText(this).apply {
+            hint = "Movie name (year helps, e.g. Dune 2021)"
+            setHintTextColor(Ui.DIM)
+            setTextColor(Ui.TEXT)
+            textSize = 14f
+            isSingleLine = true
+            background = Ui.rounded(this@ProfileActivity, Ui.PANEL, 14)
+            setPadding(dp(14), dp(11), dp(14), dp(11))
+        }
+        form.addView(input)
+        form.addView(Ui.vspace(this, 10))
+        val sendBtn = Ui.greenButton(this, "Send 📤") { sendRequest(input, form) }
+        (sendBtn.background as? android.graphics.drawable.GradientDrawable)?.cornerRadius =
+            dp(14).toFloat()
+        form.addView(sendBtn)
+        root.addView(
+            Ui.ghostButton(this, "🎬  Ask for a movie") {
+                form.visibility = if (form.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (form.visibility == View.VISIBLE) input.requestFocus()
+            }
+        )
+        root.addView(Ui.vspace(this, 12))
+        root.addView(form)
+
         setContentView(root)
         refreshAccount()
+    }
+
+    /** POST the request to the site backend; the destination stays server-side. */
+    private fun sendRequest(input: android.widget.EditText, form: LinearLayout) {
+        val title = input.text?.toString()?.trim().orEmpty()
+        if (title.isBlank()) {
+            Toast.makeText(this, "Type a movie name first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val acct = try {
+            Auth.lastAccount(this)
+        } catch (t: Throwable) {
+            null
+        }
+        Toast.makeText(this, "Sending…", Toast.LENGTH_SHORT).show()
+        io.execute {
+            var ok = false
+            try {
+                val body = org.json.JSONObject().apply {
+                    put("title", title)
+                    put("name", acct?.displayName ?: "Guest")
+                    put("email", acct?.email ?: "")
+                }
+                val conn = java.net.URL("https://redowansky.bond/api/request")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 10000
+                conn.readTimeout = 15000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("User-Agent", "RedowanskyLibraryApp")
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                ok = conn.responseCode == 200
+            } catch (e: Exception) {
+                ok = false
+            }
+            main.post {
+                if (ok) {
+                    Toast.makeText(this@ProfileActivity, "Sent 📤", Toast.LENGTH_SHORT).show()
+                    input.text?.clear()
+                    form.visibility = View.GONE
+                } else {
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "Couldn't send — check connection and try again",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     override fun onResume() {
