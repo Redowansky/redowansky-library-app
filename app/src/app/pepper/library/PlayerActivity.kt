@@ -46,8 +46,13 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
     private lateinit var durLabel: TextView
     private lateinit var playBtn: TextView
     private lateinit var centerPlay: TextView
-    private lateinit var speedBtn: TextView
+    private lateinit var channelsBtn: TextView
+    private lateinit var subsBtn: TextView
     private lateinit var hwChip: TextView
+    private lateinit var pill: LinearLayout
+    private lateinit var pillIcon: TextView
+    private lateinit var pillFill: View
+    private lateinit var pillPct: TextView
     private lateinit var spinner: ProgressBar
     private lateinit var bufferLabel: TextView
     private lateinit var flashLabel: TextView
@@ -58,8 +63,13 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
     private var userScrubbing = false
     private var started = false
     private val recentLog = mutableListOf<String>()
-    private val speeds = listOf(1.0, 1.25, 1.5, 2.0, 0.5)
-    private var speedIdx = 0
+    // Audio channel modes (Aniyomi's player has the same cycle):
+    // label -> mpv audio-channels value ("reverse" = stereo + pan swap)
+    private val channelModes = listOf(
+        "Auto" to "auto", "Stereo" to "stereo", "Mono" to "mono", "Reverse" to "reverse"
+    )
+    private var channelIdx = 0
+    private var subTrackCount = -1 // -1 = not probed yet
 
     // gesture state
     private var gMode = 0 // 0 none, 1 seek, 2 brightness, 3 volume
@@ -134,6 +144,46 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             )
         }
         root.addView(flashLabel)
+
+        // Small indicator pill (Aniyomi-style) for volume / brightness drags.
+        pill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xCC222222.toInt())
+                cornerRadius = dp(20).toFloat()
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = dp(56) }
+        }
+        pillIcon = Ui.text(this, "🔊", 15f, Ui.TEXT)
+        pill.addView(pillIcon)
+        val track = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(110), dp(6)).apply {
+                marginStart = dp(10)
+                marginEnd = dp(10)
+            }
+            background = GradientDrawable().apply {
+                setColor(0xFF555555.toInt())
+                cornerRadius = dp(3).toFloat()
+            }
+        }
+        pillFill = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(55), dp(6))
+            background = GradientDrawable().apply {
+                setColor(Ui.GREEN)
+                cornerRadius = dp(3).toFloat()
+            }
+        }
+        track.addView(pillFill)
+        pill.addView(track)
+        pillPct = Ui.text(this, "50%", 13f, Ui.TEXT, bold = true)
+        pill.addView(pillPct)
+        root.addView(pill)
 
         errorPanel = Ui.text(this, "", 13f, Ui.TEXT).apply {
             visibility = View.GONE
@@ -278,54 +328,73 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             setOnClickListener { player.cyclePause() }
         }
         btnRow.addView(playBtn)
-        btnRow.addView(smallBtn("⏪ 10s") {
-            player.timePosSec = ((player.timePosSec ?: 0.0) - 10).coerceAtLeast(0.0)
-        })
-        btnRow.addView(smallBtn("10s ⏩") {
-            player.timePosSec = (player.timePosSec ?: 0.0) + 10
-        })
-        speedBtn = smallBtn("1.0×") {
-            speedIdx = (speedIdx + 1) % speeds.size
-            val s = speeds[speedIdx]
-            MPVLib.setPropertyDouble("speed", s)
-            speedBtn.text = "${s}×"
-        }
-        btnRow.addView(speedBtn)
-        btnRow.addView(smallBtn("🔊 Audio") {
-            MPVLib.command(arrayOf("cycle", "audio"))
-            toastTrack("audio")
-        })
-        btnRow.addView(smallBtn("💬 Subs") {
-            MPVLib.command(arrayOf("cycle", "sub"))
-            toastTrack("sub")
-        })
+        channelsBtn = smallBtn("🔊 Auto") { cycleChannels() }
+        btnRow.addView(channelsBtn)
+        subsBtn = smallBtn("💬 Subs") { cycleSubs() }
+        btnRow.addView(subsBtn)
         bar.addView(btnRow)
         return bar
     }
 
-    private fun toastTrack(type: String) {
+    /**
+     * Audio is a CHANNELS switch (Auto/Stereo/Mono/Reverse stereo) like
+     * Aniyomi's — our files carry a single audio track, so cycling tracks
+     * just muted playback. Reverse = stereo with L/R swapped (pan filter).
+     */
+    private fun cycleChannels() {
+        channelIdx = (channelIdx + 1) % channelModes.size
+        val (label, value) = channelModes[channelIdx]
+        try {
+            if (value == "reverse") {
+                MPVLib.setPropertyString("audio-channels", "stereo")
+                MPVLib.setPropertyString("af", "lavfi=[pan=stereo|c0=c1|c1=c0]")
+            } else {
+                MPVLib.setPropertyString("af", "")
+                MPVLib.setPropertyString("audio-channels", value)
+            }
+        } catch (t: Throwable) { /* property rejected; toast still informs */ }
+        channelsBtn.text = "🔊 $label"
+        Toast.makeText(this, "Audio channels: $label", Toast.LENGTH_SHORT).show()
+        setControls(true)
+    }
+
+    private fun cycleSubs() {
+        if (subTrackCount == 0) {
+            Toast.makeText(this, "No subtitles embedded in this file", Toast.LENGTH_SHORT).show()
+            setControls(true)
+            return
+        }
+        MPVLib.command(arrayOf("cycle", "sub"))
         main.postDelayed({
             try {
-                val count = MPVLib.getPropertyInt("track-list/count") ?: 0
-                val currentId = when (type) {
-                    "audio" -> MPVLib.getPropertyInt("aid")
-                    else -> MPVLib.getPropertyInt("sid")
+                val sid = MPVLib.getPropertyInt("sid")
+                var label = if (sid == null) "off" else "#$sid"
+                if (sid != null) {
+                    val count = MPVLib.getPropertyInt("track-list/count") ?: 0
+                    for (i in 0 until count) {
+                        if (MPVLib.getPropertyString("track-list/$i/type") != "sub") continue
+                        if (MPVLib.getPropertyInt("track-list/$i/id") != sid) continue
+                        val lang = MPVLib.getPropertyString("track-list/$i/lang")
+                        val title = MPVLib.getPropertyString("track-list/$i/title")
+                        label = listOfNotNull(title, lang).joinToString(" ").ifBlank { label }
+                    }
                 }
-                var label = if (currentId == null) "off" else "#$currentId"
-                for (i in 0 until count) {
-                    if (MPVLib.getPropertyString("track-list/$i/type") != type) continue
-                    if (MPVLib.getPropertyInt("track-list/$i/id") != currentId) continue
-                    val lang = MPVLib.getPropertyString("track-list/$i/lang")
-                    val title = MPVLib.getPropertyString("track-list/$i/title")
-                    label = listOfNotNull(title, lang).joinToString(" ").ifBlank { label }
-                }
-                Toast.makeText(
-                    this,
-                    "${if (type == "audio") "Audio" else "Subtitle"}: $label",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } catch (t: Throwable) { /* toast is best-effort */ }
+                Toast.makeText(this, "Subtitle: $label", Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) { /* best-effort */ }
         }, 250)
+        setControls(true)
+    }
+
+    private fun probeSubTracks() {
+        try {
+            val count = MPVLib.getPropertyInt("track-list/count") ?: 0
+            var subs = 0
+            for (i in 0 until count) {
+                if (MPVLib.getPropertyString("track-list/$i/type") == "sub") subs++
+            }
+            subTrackCount = subs
+            subsBtn.alpha = if (subs == 0) 0.35f else 1f
+        } catch (t: Throwable) { /* probe again next tick */ }
     }
 
     // ---------- gestures ----------
@@ -367,7 +436,7 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
                     2 -> {
                         val b = (gStartBright + dy / h).coerceIn(0.05f, 1f)
                         window.attributes = window.attributes.apply { screenBrightness = b }
-                        flash("☀ ${(b * 100).toInt()}%", null)
+                        showPill("☀", (b * 100).toInt())
                     }
 
                     3 -> {
@@ -375,7 +444,7 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
                         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                         val vol = (gStartVol + (dy / h) * max).toInt().coerceIn(0, max)
                         am.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0)
-                        flash("🔊 ${(vol * 100 / max.coerceAtLeast(1))}%", null)
+                        showPill("🔊", vol * 100 / max.coerceAtLeast(1))
                     }
                 }
             }
@@ -399,6 +468,7 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             val pos = player.timePosSec
             if (dur != null && dur > 0) {
                 started = true
+                if (subTrackCount == -1) probeSubTracks()
                 spinner.visibility = View.GONE
                 bufferLabel.text = ""
                 seekBar.max = dur
@@ -457,6 +527,19 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
         flashLabel.visibility = View.VISIBLE
         main.postDelayed({ flashLabel.visibility = View.GONE }, 550)
         setControls(true)
+    }
+
+    private val pillHide = Runnable { if (::pill.isInitialized) pill.visibility = View.GONE }
+
+    private fun showPill(icon: String, pct: Int) {
+        pillIcon.text = icon
+        pillPct.text = "$pct%"
+        pillFill.layoutParams = FrameLayout.LayoutParams(
+            (dp(110) * pct.coerceIn(0, 100) / 100).coerceAtLeast(dp(6)), dp(6)
+        )
+        pill.visibility = View.VISIBLE
+        main.removeCallbacks(pillHide)
+        main.postDelayed(pillHide, 900)
     }
 
     private fun showError(message: String) {
