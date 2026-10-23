@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.pepper.library"
-    android:versionCode="6"
-    android:versionName="0.3.3">
+    android:versionCode="7"
+    android:versionName="0.4.0">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="Redowansky Library"
@@ -43,5 +44,15 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/PlayerTheme"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="app.pepper.library.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

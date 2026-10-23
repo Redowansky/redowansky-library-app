@@ -81,7 +81,9 @@ class DetailActivity : Activity() {
         if (movie.sources.size <= 1) {
             val src = movie.sources.firstOrNull()
             if (src != null) {
-                body.addView(Ui.greenButton(this, "▶  Play") { play(src) })
+                val playBtn = Ui.greenButton(this, "▶  Play") { play(src, resume = true) }
+                playButtons.add(playBtn to src)
+                body.addView(playBtn)
                 body.addView(Ui.vspace(this, 10))
                 body.addView(Ui.ghostButton(this, "⬇  Download") { requestDownload(src) })
             } else {
@@ -94,7 +96,8 @@ class DetailActivity : Activity() {
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                 }
-                val play = Ui.greenButton(this, "▶ ${src.label}") { play(src) }
+                val play = Ui.greenButton(this, "▶ ${src.label}") { play(src, resume = true) }
+                playButtons.add(play to src)
                 play.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     .apply { marginEnd = dp(8) }
                 row.addView(play)
@@ -112,12 +115,49 @@ class DetailActivity : Activity() {
         setContentView(root)
     }
 
-    private fun play(src: Source) {
+    private val playButtons = mutableListOf<Pair<android.widget.Button, Source>>()
+
+    /** If there's saved progress for the source that was played last, resume it. */
+    private fun play(src: Source, resume: Boolean) {
+        var startAt = 0.0
+        if (resume) {
+            val entry = ProgressStore.get(this, movie.id)
+            if (entry != null && !entry.done && entry.pos > 10 && entry.url == src.url) {
+                startAt = entry.pos
+            }
+        }
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", src.url)
                 .putExtra("title", movie.title)
+                .putExtra("id", movie.id)
+                .putExtra("poster", movie.posterUrl())
+                .putExtra("type", movie.type)
+                .putExtra("startAt", startAt)
         )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Label the button for the last-played source with its resume point.
+        val entry = ProgressStore.get(this, movie.id)
+        for ((btn, src) in playButtons) {
+            btn.text = if (entry != null && !entry.done && entry.pos > 10 && entry.url == src.url) {
+                "▶  Resume ${fmtTime(entry.pos)}"
+            } else if (movie.sources.size <= 1) {
+                "▶  Play"
+            } else {
+                "▶ ${src.label}"
+            }
+        }
+    }
+
+    private fun fmtTime(sec: Double): String {
+        val s = sec.toInt()
+        val h = s / 3600
+        val m = (s % 3600) / 60
+        val ss = s % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, ss) else "%d:%02d".format(m, ss)
     }
 
     private var pendingSource: Source? = null

@@ -62,6 +62,16 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
     private var controlsVisible = true
     private var userScrubbing = false
     private var started = false
+
+    // resume / progress bookkeeping
+    private var movieId: String = ""
+    private var movieTitle: String = ""
+    private var moviePoster: String? = null
+    private var movieType: String = "movie"
+    private var playUrl: String = ""
+    private var startAt: Double = 0.0
+    private var seekApplied = false
+    private var tickCount = 0
     private val recentLog = mutableListOf<String>()
     // Audio channel modes (Aniyomi's player has the same cycle):
     // label -> mpv audio-channels value ("reverse" = stereo + pan swap)
@@ -96,6 +106,12 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             finish()
             return
         }
+        movieId = intent.getStringExtra("id") ?: ""
+        movieTitle = title
+        moviePoster = intent.getStringExtra("poster")
+        movieType = intent.getStringExtra("type") ?: "movie"
+        playUrl = url
+        startAt = intent.getDoubleExtra("startAt", 0.0)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -234,6 +250,11 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             player.initialize(mpvConfigDir().path, cacheDir.path, "warn")
             MPVLib.addLogObserver(this)
             MPVLib.addObserver(this)
+            if (startAt > 5) {
+                // mpv applies the start option when the file loads;
+                // updateProgress also force-seeks if this gets ignored.
+                MPVLib.setOptionString("start", startAt.toString())
+            }
             player.playFile(url)
             main.post(tick)
             scheduleHide()
@@ -461,12 +482,43 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
 
     // ---------- sync / state ----------
 
+    private fun saveProgress() {
+        if (movieId.isBlank() || !started) return
+        try {
+            val pos = player.timePosSec ?: return
+            val dur = player.durationSec ?: return
+            if (pos < 3 || dur <= 0) return
+            ProgressStore.save(
+                this,
+                ProgressStore.Entry(
+                    id = movieId,
+                    title = movieTitle,
+                    poster = moviePoster,
+                    type = movieType,
+                    url = playUrl,
+                    pos = pos,
+                    dur = dur.toDouble(),
+                    ts = System.currentTimeMillis(),
+                    done = pos >= dur - 45
+                )
+            )
+        } catch (t: Throwable) { /* progress is best-effort */ }
+    }
+
     private fun updateProgress() {
         if (!::player.isInitialized) return
         try {
             val dur = player.durationSec
             val pos = player.timePosSec
             if (dur != null && dur > 0) {
+                // Resume fallback: if the mpv start option was ignored
+                // and we're still near the beginning, seek once.
+                if (!seekApplied && startAt > 5 && pos != null) {
+                    if (pos < startAt - 15) player.timePosSec = startAt
+                    seekApplied = true
+                }
+                tickCount++
+                if (tickCount % 5 == 0) saveProgress()
                 started = true
                 if (subTrackCount == -1) probeSubTracks()
                 spinner.visibility = View.GONE
@@ -605,6 +657,7 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
         super.onPause()
         if (::player.isInitialized) {
             try {
+                saveProgress()
                 if (player.paused != true) player.paused = true
             } catch (t: Throwable) { /* already gone */ }
         }
