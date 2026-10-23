@@ -184,6 +184,24 @@ class MainActivity : Activity() {
         refreshContinue()
         refreshAccountChip()
         checkUpdate()
+        showCrashTraceIfAny()
+    }
+
+    /** If the previous run died, show exactly why (screenshot-friendly). */
+    private fun showCrashTraceIfAny() {
+        val trace = CrashTrap.peek(this) ?: return
+        val scroll = android.widget.ScrollView(this)
+        val tv = Ui.text(this, trace, 11f, Ui.TEXT).apply {
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setTextIsSelectable(true)
+        }
+        scroll.addView(tv)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("⚠️ Last crash — send Pepper a screenshot")
+            .setView(scroll)
+            .setPositiveButton("Clear") { _, _ -> CrashTrap.clear(this) }
+            .setNegativeButton("Later", null)
+            .show()
     }
 
     override fun onResume() {
@@ -212,12 +230,23 @@ class MainActivity : Activity() {
     private fun onAccountTap() {
         val acct = try {
             Auth.lastAccount(this)
-        } catch (e: Exception) {
-            null
+        } catch (t: Throwable) {
+            android.widget.Toast.makeText(
+                this, "Sign-in check failed: ${t.javaClass.simpleName}: ${t.message}",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
         }
         if (acct == null) {
-            @Suppress("DEPRECATION")
-            startActivityForResult(Auth.signInIntent(this), Auth.RC_SIGN_IN)
+            try {
+                @Suppress("DEPRECATION")
+                startActivityForResult(Auth.signInIntent(this), Auth.RC_SIGN_IN)
+            } catch (t: Throwable) {
+                android.widget.Toast.makeText(
+                    this, "Sign-in start failed: ${t.javaClass.simpleName}: ${t.message}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
             return
         }
         android.app.AlertDialog.Builder(this)
