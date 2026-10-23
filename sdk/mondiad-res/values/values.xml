@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr format="enum" name="position">
+        <enum name="LEFT" value="0"/>
+        <enum name="RIGHT" value="1"/>
+        <enum name="TOP" value="2"/>
+        <enum name="BOTTOM" value="3"/>
+        <enum name="VIEW" value="4"/>
+    </attr>
+    <attr format="enum" name="size">
+        <enum name="SMARTPHONE_BANNER" value="0"/>
+        <enum name="MEDIUM_RECTANGLE" value="1"/>
+        <enum name="MEDIUM_SQUARE" value="2"/>
+        <enum name="LEADERBOARD" value="3"/>
+    </attr>
+    <style name="Theme.Transparent" parent="android:Theme">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+    <declare-styleable name="BannerView">
+        <attr format="string" name="zone_id"/>
+        <attr name="size"/>
+        <attr name="position"/>
+        <attr format="integer" name="offset"/>
+        <attr format="boolean" name="apply_safe_offset"/>
+    </declare-styleable>
+</resources>
