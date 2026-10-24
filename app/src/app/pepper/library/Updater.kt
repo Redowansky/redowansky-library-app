@@ -31,14 +31,26 @@ object Updater {
         else pi.versionCode.toLong()
     }
 
-    /** Returns update info only when the hosted build is newer. Blocking: call off the UI thread. */
+    /**
+     * Returns update info only when the hosted build is newer.
+     * Blocking: call off the UI thread.
+     * THROWS on any check failure (network error, non-200 HTTP) so
+     * callers can tell "check failed" apart from "no update".
+     * v0.6.4 and earlier swallowed every failure as "latest version",
+     * which is how a failed check masqueraded as up-to-date.
+     */
     fun check(ctx: Context): Info? {
         val conn = URL(VERSION_URL).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000
         conn.readTimeout = 8000
+        conn.instanceFollowRedirects = true
         conn.setRequestProperty("User-Agent", "RedowanskyLibraryApp")
         // Never serve a stale version file from any cache.
         conn.setRequestProperty("Cache-Control", "no-cache")
+        val code = conn.responseCode
+        if (code != HttpURLConnection.HTTP_OK) {
+            throw java.io.IOException("version check HTTP $code")
+        }
         val text = conn.inputStream.bufferedReader().use { it.readText() }
         val o = JSONObject(text)
         val remote = o.optLong("versionCode", 0)

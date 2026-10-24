@@ -295,13 +295,21 @@ class ProfileActivity : Activity() {
     private fun manualUpdateCheck() {
         Toast.makeText(this, "Checking…", Toast.LENGTH_SHORT).show()
         io.execute {
-            val info = try {
-                Updater.check(this)
+            // A failed check is NOT "latest" — report it as a failure
+            // with the reason, so it can be screenshotted and fixed.
+            var info: Updater.Info? = null
+            var error: String? = null
+            try {
+                info = Updater.check(this)
             } catch (e: Exception) {
-                null
+                error = "${e.javaClass.simpleName}: ${e.message ?: "no detail"}"
             }
             main.post {
-                if (info == null) {
+                if (error != null) {
+                    Toast.makeText(
+                        this, "Update check failed: $error", Toast.LENGTH_LONG
+                    ).show()
+                } else if (info == null) {
                     Toast.makeText(
                         this, "You're on the latest version ✅", Toast.LENGTH_SHORT
                     ).show()
