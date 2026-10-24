@@ -251,6 +251,9 @@ class MainActivity : Activity() {
         refreshHero()
         refreshAccountChip()
         checkUpdate()
+        // Cross-device progress: pull cloud first, then push local-newer.
+        // Best-effort; refresh the hero once the merge lands.
+        CloudSync.syncAll(this) { runOnUiThread { refreshHero() } }
     }
 
     /** Full-screen crash report: trace + a button that clears it and retries the real UI. */
@@ -338,6 +341,7 @@ class MainActivity : Activity() {
         try {
             val acct = Auth.accountFromResult(data)
             refreshAccountChip()
+            CloudSync.syncAll(this) { runOnUiThread { refreshHero() } }
             android.widget.Toast.makeText(
                 this, "Signed in as ${acct?.email ?: "Google account"}",
                 android.widget.Toast.LENGTH_SHORT

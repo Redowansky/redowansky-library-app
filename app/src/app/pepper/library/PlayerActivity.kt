@@ -488,20 +488,20 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             val pos = player.timePosSec ?: return
             val dur = player.durationSec ?: return
             if (pos < 3 || dur <= 0) return
-            ProgressStore.save(
-                this,
-                ProgressStore.Entry(
-                    id = movieId,
-                    title = movieTitle,
-                    poster = moviePoster,
-                    type = movieType,
-                    url = playUrl,
-                    pos = pos,
-                    dur = dur.toDouble(),
-                    ts = System.currentTimeMillis(),
-                    done = pos >= dur - 45
-                )
+            val entry = ProgressStore.Entry(
+                id = movieId,
+                title = movieTitle,
+                poster = moviePoster,
+                type = movieType,
+                url = playUrl,
+                pos = pos,
+                dur = dur.toDouble(),
+                ts = System.currentTimeMillis(),
+                done = pos >= dur - 45
             )
+            ProgressStore.save(this, entry)
+            // Cross-device sync (best-effort, throttled inside CloudSync).
+            CloudSync.uploadEntry(this, entry)
         } catch (t: Throwable) { /* progress is best-effort */ }
     }
 
