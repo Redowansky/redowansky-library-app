@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.pepper.library"
-    android:versionCode="18"
-    android:versionName="0.6.6">
+    android:versionCode="19"
+    android:versionName="0.6.7">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
@@ -127,6 +127,18 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Mondiad push permission prompt. The SDK's own AAR manifest
+             declares this activity, but our manual (no-Gradle) build
+             does not merge AAR manifests — so until v0.6.7 it was
+             missing entirely, Mnd.push.init's subscribe-on-startup
+             prompt crashed silently inside LibraryApp's try/catch,
+             and the app never asked for notification permission.
+             Theme.Transparent comes from the merged Mondiad res. -->
+        <activity
+            android:name="com.mndiad.android.sdk.push.components.RequestPermissionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent" />
 
         <service
             android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
