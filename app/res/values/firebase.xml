@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-written equivalent of the google-services Gradle plugin output,
+     generated from firebase/google-services.json (project redowansky-library). -->
+<resources>
+    <string name="google_app_id" translatable="false">1:401417620222:android:b454973264708234ea73af</string>
+    <string name="gcm_defaultSenderId" translatable="false">401417620222</string>
+    <string name="google_api_key" translatable="false">AIzaSyD2Z0vM4b0DMUsq-4Sl0Y6gYn9TjRbOUEo</string>
+    <string name="project_id" translatable="false">redowansky-library</string>
+    <string name="google_storage_bucket" translatable="false">redowansky-library.firebasestorage.app</string>
+</resources>
