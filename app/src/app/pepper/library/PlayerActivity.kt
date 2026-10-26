@@ -501,7 +501,9 @@ class PlayerActivity : Activity(), MPVLib.EventObserver, MPVLib.LogObserver {
             )
             ProgressStore.save(this, entry)
             // Cross-device sync (best-effort, throttled inside CloudSync).
-            CloudSync.uploadEntry(this, entry)
+            // Local offline files have no web URL to sync: a phone-local
+            // path would be useless (and wrong) on the site/PC, so skip.
+            if (playUrl.startsWith("http")) CloudSync.uploadEntry(this, entry)
         } catch (t: Throwable) { /* progress is best-effort */ }
     }
 

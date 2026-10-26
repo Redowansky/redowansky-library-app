@@ -271,24 +271,39 @@ class DetailActivity : Activity() {
     }
 
     private fun download(src: Source) {
-        val fileName = (movie.title.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim()
-            .ifBlank { "movie" }) + ".mp4"
+        // From v0.6.11: downloads go to the app's OWN private storage
+        // (files/Download inside the app's data dir) — never to the
+        // phone's public Downloads folder. They are then listed in the
+        // Downloads folder inside the Recent section, and play offline.
+        val base = movie.title.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim()
+            .ifBlank { "movie" }
+        val label = src.label.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim()
+        val fileName = if (label.isNotBlank() && label != "Play") "$base - $label.mp4" else "$base.mp4"
         val req = DownloadManager.Request(Uri.parse(src.url)).apply {
             setTitle(movie.title)
             setDescription("Redowansky Library")
             setMimeType("video/mp4")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setAllowedOverMetered(true)
-            try {
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-            } catch (e: Exception) {
-                setDestinationInExternalFilesDir(
-                    this@DetailActivity, Environment.DIRECTORY_MOVIES, fileName
-                )
-            }
+            setDestinationInExternalFilesDir(
+                this@DetailActivity, Environment.DIRECTORY_DOWNLOADS, fileName
+            )
         }
         val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        dm.enqueue(req)
-        Toast.makeText(this, "Downloading: ${movie.title}", Toast.LENGTH_SHORT).show()
+        val dmId = dm.enqueue(req)
+        DownloadsStore.save(
+            this,
+            DownloadsStore.Entry(
+                id = movie.id,
+                title = movie.title,
+                poster = movie.posterUrl(),
+                type = movie.type,
+                fileName = fileName,
+                sourceUrl = src.url,
+                dmId = dmId,
+                ts = System.currentTimeMillis()
+            )
+        )
+        Toast.makeText(this, "Downloading to app storage: ${movie.title}", Toast.LENGTH_SHORT).show()
     }
 }

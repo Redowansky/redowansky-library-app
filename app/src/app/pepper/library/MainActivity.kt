@@ -49,6 +49,8 @@ class MainActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var chipsRow: LinearLayout
     private lateinit var sectionTitle: TextView
+    private lateinit var downloadsRow: LinearLayout
+    private lateinit var downloadsRowMeta: TextView
     private val chipViews = mutableMapOf<String, TextView>()
 
     // Hero Continue Watching
@@ -220,6 +222,39 @@ class MainActivity : Activity() {
         }
         root.addView(status)
 
+        // ---------- Downloads folder (Recent section only) ----------
+        // From v0.6.11: downloads live in the app's own private storage,
+        // and this folder row in the Recently Played section opens them.
+        downloadsRowMeta = Ui.text(this, "", 12f, Ui.DIM)
+        downloadsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.rounded(this@MainActivity, Ui.CARD, 12)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(14); rightMargin = dp(14)
+                topMargin = dp(4); bottomMargin = dp(8)
+            }
+            visibility = View.GONE
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, DownloadsActivity::class.java))
+            }
+        }
+        downloadsRow.addView(Ui.text(this, "📁", 20f, Ui.TEXT, gravity = Gravity.CENTER))
+        val dlCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginStart = dp(10) }
+        }
+        dlCol.addView(Ui.text(this, "Downloads", 15f, Ui.TEXT, bold = true))
+        dlCol.addView(downloadsRowMeta)
+        downloadsRow.addView(dlCol)
+        downloadsRow.addView(Ui.text(this, "›", 22f, Ui.DIM, gravity = Gravity.CENTER))
+        root.addView(downloadsRow)
+
         // ---------- Poster grid ----------
         adapter = PosterRvAdapter()
         recycler = RecyclerView(this).apply {
@@ -290,7 +325,20 @@ class MainActivity : Activity() {
         super.onResume()
         if (section == "home") refreshHero()
         refreshAccountChip()
+        refreshDownloadsRow()
         refresh()
+    }
+
+    private fun refreshDownloadsRow() {
+        if (!::downloadsRow.isInitialized) return
+        val ready = try { DownloadsStore.ready(this).size } catch (e: Exception) { 0 }
+        val total = try { DownloadsStore.all(this).size } catch (e: Exception) { 0 }
+        downloadsRow.visibility = if (section == "recent") View.VISIBLE else View.GONE
+        downloadsRowMeta.text = when {
+            total == 0 -> "Nothing downloaded yet — tap a title's ⬇ Download"
+            ready == total -> "$ready saved in the app, playable offline"
+            else -> "$ready ready · ${total - ready} downloading"
+        }
     }
 
     // ---------- Header account ----------
@@ -526,6 +574,7 @@ class MainActivity : Activity() {
         styleNav()
         chipsRow.visibility = if (section == "home") View.VISIBLE else View.GONE
         sectionTitle.text = if (section == "home") "Latest Updates" else "Recently Played"
+        refreshDownloadsRow()
         refreshHero()
         refresh()
     }
