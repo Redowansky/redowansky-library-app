@@ -607,9 +607,9 @@ class MainActivity : Activity() {
             if (info != null) {
                 main.post {
                     pendingUpdate = info
-                    updateBanner.text = "🆕 Update available: v${info.versionName}" +
-                        (if (info.notes.isNotBlank()) " — ${info.notes}" else "") +
-                        "\nTap to download & install"
+                    // From v0.6.12: never show the server's change notes —
+                    // users only ever see the generic line below.
+                    updateBanner.text = "🆕 Update available\nFixed some bugs and improvements.\nTap to download & install"
                     updateBanner.visibility = View.VISIBLE
                 }
             }

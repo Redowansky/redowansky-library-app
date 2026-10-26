@@ -315,8 +315,8 @@ class ProfileActivity : Activity() {
                     ).show()
                 } else {
                     AlertDialog.Builder(this)
-                        .setTitle("Update available: v${info.versionName}")
-                        .setMessage(info.notes.ifBlank { "A newer build is ready." })
+                        .setTitle("Update available")
+                        .setMessage("Fixed some bugs and improvements.")
                         .setNegativeButton("Later", null)
                         .setPositiveButton("Download & install") { _, _ ->
                             UpdateInstaller.start(this, info)
