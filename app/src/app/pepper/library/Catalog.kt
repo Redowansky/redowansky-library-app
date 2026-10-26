@@ -34,11 +34,13 @@ object Catalog {
 }
 
 object Ads {
-    // PILOT: demo mode ON + placeholder zone until the app is registered
-    // in Mondiad and a real Banner zone exists. Flip these two, rebuild.
-    const val DEMO_MODE = true
-    const val ZONE_ID = "0" // home/detail 320x50 banner zone
-    const val FULLSCREEN_ZONE_ID = "0" // download ad 300x250 zone (may be the same id)
+    // LIVE 2026-10-26: app 585 accepted, Banner zone 83566 "Library Banner"
+    // (Active, Mainstream; Mondiad's Banner form offers no size selector,
+    // so the same zone serves both the 320x50 strip and the 300x250 slot).
+    // Push ads use the separate zone 83417 in LibraryApp.
+    const val DEMO_MODE = false
+    const val ZONE_ID = "83566" // home/detail 320x50 banner zone
+    const val FULLSCREEN_ZONE_ID = "83566" // download ad 300x250 zone (same Banner zone)
 
     fun init() {
         Mnd.banners.demoMode = DEMO_MODE
