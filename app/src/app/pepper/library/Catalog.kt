@@ -58,7 +58,23 @@ object Ads {
                 }
 
                 override fun onAdFailedToLoad(error: String) {
+                    // DIAGNOSTIC (0.6.10 only): surface the SDK's exact error
+                    // on screen instead of a silent empty strip, so the
+                    // failure reason can be read off a screenshot.
                     android.util.Log.w("LibraryApp", "Mondiad banner failed: $error")
+                    post {
+                        removeAllViews()
+                        addView(android.widget.TextView(context).apply {
+                            text = "Ad error (zone $ZONE_ID): $error"
+                            setTextColor(android.graphics.Color.YELLOW)
+                            textSize = 11f
+                            gravity = android.view.Gravity.CENTER
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        })
+                    }
                 }
             }
             layoutParams = LinearLayout.LayoutParams(

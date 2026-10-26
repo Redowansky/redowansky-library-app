@@ -111,7 +111,9 @@ class AdActivity : Activity() {
                 }
 
                 override fun onAdFailedToLoad(error: String) {
-                    showHouseAd()
+                    // DIAGNOSTIC (0.6.10 only): show the SDK error instead
+                    // of the house card, so it can be read off a screenshot.
+                    showErrorAd(error)
                 }
             }
             layoutParams = FrameLayout.LayoutParams(
@@ -119,8 +121,31 @@ class AdActivity : Activity() {
             )
         }
         adSlot.addView(banner)
-        // No fill and no failure callback within 6s -> house card.
-        main.postDelayed({ if (!adSettled) showHouseAd() }, 6000)
+        // No fill and no failure callback within 6s -> timeout message.
+        main.postDelayed({ if (!adSettled) showErrorAd("TIMEOUT: no callback in 6s (no response / no fill)") }, 6000)
+    }
+
+    private fun showErrorAd(error: String) {
+        if (adSettled) return
+        adSettled = true
+        main.post {
+            adSlot.removeAllViews()
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(Ui.PANEL)
+                setPadding(dp(18), dp(18), dp(18), dp(18))
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                addView(Ui.text(this@AdActivity, "⚠️ Mondiad ad failed", 16f, Ui.GREEN, bold = true, gravity = Gravity.CENTER))
+                addView(Ui.vspace(this@AdActivity, 8))
+                addView(Ui.text(this@AdActivity, "Zone ${Ads.FULLSCREEN_ZONE_ID}", 13f, Ui.TEXT, gravity = Gravity.CENTER))
+                addView(Ui.vspace(this@AdActivity, 6))
+                addView(Ui.text(this@AdActivity, error, 12f, Ui.TEXT, gravity = Gravity.CENTER))
+            }
+            adSlot.addView(card)
+        }
     }
 
     private fun showHouseAd() {
